@@ -1,0 +1,24 @@
+// Message types for chrome.runtime.sendMessage / onMessage
+const MSG = {
+  // Content Script → Service Worker
+  ANALYZE_PAGE: "ANALYZE_PAGE",
+  GET_CACHED_RESULTS: "GET_CACHED_RESULTS",
+
+  // Service Worker → Content Script
+  ANALYSIS_COMPLETE: "ANALYSIS_COMPLETE",
+  ANALYSIS_ERROR: "ANALYSIS_ERROR",
+  SHOW_OVERLAYS: "SHOW_OVERLAYS",
+
+  // Popup → Service Worker
+  REQUEST_SCORES: "REQUEST_SCORES",
+  REQUEST_SUGGESTIONS: "REQUEST_SUGGESTIONS",
+
+  // Service Worker → Popup
+  SCORES_READY: "SCORES_READY",
+  SUGGESTIONS_READY: "SUGGESTIONS_READY",
+
+  // User actions (Content Script → Service Worker)
+  SUGGESTION_ACCEPTED: "SUGGESTION_ACCEPTED",
+  SUGGESTION_REJECTED: "SUGGESTION_REJECTED",
+  EXPORT_SUGGESTIONS: "EXPORT_SUGGESTIONS"
+};

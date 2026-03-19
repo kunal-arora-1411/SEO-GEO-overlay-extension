@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="header-left">
+        <h1>SEO &amp; GEO Optimizer</h1>
+      </div>
+      <span class="version">v1.0.0</span>
+    </header>
+
+    <!-- ── Auth State ───────────────────────────────────────── -->
+    <div id="auth-state" class="state-panel hidden">
+      <div class="auth-content">
+        <div id="auth-login-form" class="auth-form">
+          <h2 class="auth-title">Sign In</h2>
+          <div class="form-group">
+            <input type="email" id="login-email" class="form-input" placeholder="Email" autocomplete="email">
+          </div>
+          <div class="form-group">
+            <input type="password" id="login-password" class="form-input" placeholder="Password" autocomplete="current-password">
+          </div>
+          <div id="auth-error" class="auth-error hidden"></div>
+          <button id="login-btn" class="btn-primary btn-full">Sign In</button>
+          <p class="auth-switch">Don't have an account? <a href="#" id="show-register">Sign Up</a></p>
+          <div class="auth-divider"><span>or</span></div>
+          <button id="skip-auth-btn" class="btn-secondary btn-full">Continue without account</button>
+        </div>
+
+        <div id="auth-register-form" class="auth-form hidden">
+          <h2 class="auth-title">Create Account</h2>
+          <div class="form-group">
+            <input type="text" id="register-name" class="form-input" placeholder="Display Name (optional)">
+          </div>
+          <div class="form-group">
+            <input type="email" id="register-email" class="form-input" placeholder="Email" autocomplete="email">
+          </div>
+          <div class="form-group">
+            <input type="password" id="register-password" class="form-input" placeholder="Password (min 8 chars)" autocomplete="new-password">
+          </div>
+          <div id="register-error" class="auth-error hidden"></div>
+          <button id="register-btn" class="btn-primary btn-full">Create Account</button>
+          <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign In</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── User Bar (shown when logged in) ─────────────────── -->
+    <div id="user-bar" class="user-bar hidden">
+      <span id="user-email" class="user-email"></span>
+      <span id="user-tier" class="user-tier">Free</span>
+      <button id="logout-btn" class="btn-text">Sign out</button>
+    </div>
+
+    <!-- ── Initial State ──────────────────────────────────── -->
+    <div id="initial-state" class="state-panel">
+      <div class="initial-content">
+        <svg class="initial-icon" viewBox="0 0 48 48" width="48" height="48">
+          <circle cx="24" cy="24" r="22" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+          <path d="M16 24h16M24 16v16" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p>Analyze the current page for SEO and AI visibility optimization.</p>
+        <button id="analyze-btn" class="btn-primary">Analyze Page</button>
+      </div>
+    </div>
+
+    <!-- ── Loading State ──────────────────────────────────── -->
+    <div id="loading-state" class="state-panel hidden">
+      <div class="loading-content">
+        <div class="spinner"></div>
+        <p id="loading-text">Extracting page content...</p>
+      </div>
+    </div>
+
+    <!-- ── Error State ────────────────────────────────────── -->
+    <div id="error-state" class="state-panel hidden">
+      <div class="error-content">
+        <div class="error-icon">!</div>
+        <p id="error-text">Something went wrong.</p>
+        <button id="retry-btn" class="btn-secondary">Try Again</button>
+      </div>
+    </div>
+
+    <!-- ── Results State ──────────────────────────────────── -->
+    <div id="results-state" class="state-panel hidden">
+
+      <!-- Score Gauges -->
+      <div class="scores-row">
+        <div class="score-gauge" id="seo-gauge">
+          <svg viewBox="0 0 120 120">
+            <circle class="gauge-bg" cx="60" cy="60" r="54"/>
+            <circle class="gauge-fill" cx="60" cy="60" r="54" id="seo-circle"/>
+          </svg>
+          <div class="gauge-value" id="seo-value">--</div>
+          <div class="gauge-label">SEO</div>
+        </div>
+
+        <div class="score-gauge" id="geo-gauge">
+          <svg viewBox="0 0 120 120">
+            <circle class="gauge-bg" cx="60" cy="60" r="54"/>
+            <circle class="gauge-fill" cx="60" cy="60" r="54" id="geo-circle"/>
+          </svg>
+          <div class="gauge-value" id="geo-value">--</div>
+          <div class="gauge-label">GEO</div>
+        </div>
+
+        <div class="score-gauge combined" id="combined-gauge">
+          <div class="grade-letter" id="combined-grade">-</div>
+          <div class="combined-score" id="combined-value">--</div>
+          <div class="gauge-label">Combined</div>
+        </div>
+      </div>
+
+      <!-- GEO Status -->
+      <div id="geo-status" class="geo-status">
+        <span class="geo-status-dot pending"></span>
+        <span id="geo-status-text">GEO analysis pending...</span>
+      </div>
+
+      <!-- Issues -->
+      <div class="section">
+        <h2 class="section-title">
+          Issues
+          <span class="badge" id="issue-count">0</span>
+        </h2>
+        <div id="issues-list" class="issues-list"></div>
+      </div>
+
+      <!-- Suggestions -->
+      <div class="section">
+        <h2 class="section-title">
+          AI Suggestions
+          <span class="badge" id="suggestion-count">0</span>
+        </h2>
+        <div id="suggestions-list" class="suggestions-list"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="actions-row">
+        <button id="export-btn" class="btn-secondary btn-sm">Export Report</button>
+        <button id="toggle-overlays-btn" class="btn-secondary btn-sm">Show Overlays</button>
+        <button id="reanalyze-btn" class="btn-secondary btn-sm">Re-analyze</button>
+      </div>
+    </div>
+
+    <!-- ── Footer ─────────────────────────────────────────── -->
+    <footer class="popup-footer">
+      <a href="https://github.com/seo-geo-optimizer" target="_blank" rel="noopener">GitHub</a>
+      <span class="footer-sep">|</span>
+      <a href="https://github.com/seo-geo-optimizer/docs" target="_blank" rel="noopener">Docs</a>
+    </footer>
+  </div>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/message-types.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
