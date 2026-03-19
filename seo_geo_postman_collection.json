@@ -1,0 +1,68 @@
+{
+	"info": {
+		"name": "SEO-GEO Optimizer API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Quick Score API",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"url\": \"https://example.com/test-article\",\n  \"meta\": {\n    \"title\": \"How to Optimize for Generative Engine Optimization\",\n    \"title_length\": 51,\n    \"meta_description\": \"A complete guide to GEO and how it differs from traditional SEO.\",\n    \"meta_description_length\": 64\n  },\n  \"content\": {\n    \"full_text\": \"Generative Engine Optimization (GEO) is the next evolution of SEO. Instead of optimizing for blue links, you optimize for AI engine answers. This involves structuring data clearly, providing authoritative sources, and maintaining high readability.\",\n    \"word_count\": 43\n  }\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/score",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"score"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Full Analyze API",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"url\": \"https://example.com/test-article\",\n  \"meta\": {\n    \"title\": \"How to Optimize for Generative Engine Optimization\",\n    \"title_length\": 51,\n    \"meta_description\": \"A complete guide to GEO and how it differs from traditional SEO.\",\n    \"meta_description_length\": 64\n  },\n  \"content\": {\n    \"full_text\": \"Generative Engine Optimization (GEO) is the next evolution of SEO. Instead of optimizing for blue links, you optimize for AI engine answers. This involves structuring data clearly, providing authoritative sources, and maintaining high readability.\",\n    \"word_count\": 43\n  }\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"v1",
+						"analyze"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
