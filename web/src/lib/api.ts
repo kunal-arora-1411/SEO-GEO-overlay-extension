@@ -130,68 +130,111 @@ class ApiClient {
   }
 
   // Audit endpoints
-  async getAudits(page: number = 1, limit: number = 20) {
-    return this.request<{
-      items: Audit[];
-      total: number;
-      page: number;
-      pages: number;
-    }>(`/audits?page=${page}&limit=${limit}`);
+  async startAudit(domain: string): Promise<Audit> {
+    const url = domain.startsWith("http") ? domain : `https://${domain}`;
+    const resp = await this.request<{
+      audit_id: string;
+      status: string;
+      pages_crawled: number;
+      total_pages: number;
+      progress_pct: number;
+    }>("/audit/start", { method: "POST", body: { url, max_pages: 50 } });
+
+    return {
+      id: resp.audit_id,
+      domain,
+      status: resp.status as Audit["status"],
+      pages_crawled: resp.pages_crawled,
+      issues_found: 0,
+      score: 0,
+      created_at: new Date().toISOString(),
+      progress_pct: resp.progress_pct,
+      total_pages: resp.total_pages,
+    };
   }
 
-  async startAudit(domain: string) {
-    return this.request<Audit>("/audits", {
-      method: "POST",
-      body: { domain },
-    });
+  async getAuditStatus(id: string): Promise<Partial<Audit>> {
+    const resp = await this.request<{
+      audit_id: string;
+      status: string;
+      pages_crawled: number;
+      total_pages: number;
+      progress_pct: number;
+    }>(`/audit/status/${id}`);
+
+    return {
+      id: resp.audit_id,
+      status: resp.status as Audit["status"],
+      pages_crawled: resp.pages_crawled,
+      progress_pct: resp.progress_pct,
+      total_pages: resp.total_pages,
+    };
+  }
+
+  async getAuditResults(id: string): Promise<AuditResults> {
+    return this.request<AuditResults>(`/audit/results/${id}`);
   }
 
   // Team endpoints
-  async getTeam() {
-    return this.request<Team>("/teams/me");
+  async getTeams(): Promise<Team[]> {
+    return this.request<Team[]>("/teams");
   }
 
-  async inviteTeamMember(email: string, role: string) {
-    return this.request<{ message: string }>("/teams/invite", {
+  async createTeam(name: string): Promise<Team> {
+    return this.request<Team>("/teams", { method: "POST", body: { name } });
+  }
+
+  async getTeamMembers(teamId: string): Promise<TeamMember[]> {
+    return this.request<TeamMember[]>(`/teams/${teamId}/members`);
+  }
+
+  async inviteTeamMember(teamId: string, email: string, role: string): Promise<TeamMember> {
+    return this.request<TeamMember>(`/teams/${teamId}/invite`, {
       method: "POST",
       body: { email, role },
     });
   }
 
-  async removeTeamMember(userId: string) {
-    return this.request<void>(`/teams/members/${userId}`, {
+  async removeTeamMember(teamId: string, userId: string): Promise<void> {
+    return this.request<void>(`/teams/${teamId}/members/${userId}`, {
       method: "DELETE",
     });
   }
 
   // Competitor endpoints
-  async getCompetitors() {
-    return this.request<Competitor[]>("/competitors");
+  async getCompetitors(): Promise<Competitor[]> {
+    const resp = await this.request<{ competitors: Competitor[] }>("/competitors");
+    return resp.competitors;
   }
 
-  async addCompetitor(domain: string) {
+  async addCompetitor(domain: string): Promise<Competitor> {
+    const url = domain.startsWith("http") ? domain : `https://${domain}`;
     return this.request<Competitor>("/competitors", {
       method: "POST",
-      body: { domain },
+      body: { url },
     });
   }
 
-  async removeCompetitor(id: string) {
+  async removeCompetitor(id: string): Promise<void> {
     return this.request<void>(`/competitors/${id}`, {
       method: "DELETE",
     });
   }
 
   // Settings
+  async getSettings() {
+    return this.request<UserSettings>("/auth/settings");
+  }
+
   async updateSettings(settings: Partial<UserSettings>) {
-    return this.request<UserSettings>("/settings", {
+    return this.request<UserSettings>("/auth/settings", {
       method: "PATCH",
       body: settings,
     });
   }
 
   async getBillingInfo() {
-    return this.request<BillingInfo>("/billing");
+    return this.request<BillingInfo>("/billing/status");
   }
 }
 
@@ -216,47 +259,57 @@ export interface Audit {
   issues_found: number;
   score: number;
   created_at: string;
+  progress_pct?: number;
+  total_pages?: number;
+}
+
+export interface AuditResults {
+  audit_id: string;
+  status: string;
+  domain: string;
+  pages_crawled: number;
+  avg_seo_score: number | null;
+  common_issues: string[];
 }
 
 export interface Team {
   id: string;
   name: string;
-  members: TeamMember[];
-  plan: string;
+  created_at: string;
+  member_count: number;
 }
 
 export interface TeamMember {
   id: string;
+  user_id: string;
   email: string;
-  full_name: string;
-  role: "owner" | "admin" | "member";
+  display_name: string | null;
+  role: string;
   joined_at: string;
 }
 
 export interface Competitor {
   id: string;
+  url: string;
   domain: string;
-  last_score: number;
-  trend: number[];
-  tracked_since: string;
+  name: string | null;
+  last_analyzed: string | null;
+  seo_score: number | null;
+  geo_score: number | null;
 }
 
 export interface UserSettings {
-  full_name: string;
+  full_name: string | null;
   email: string;
   notifications_enabled: boolean;
   weekly_reports: boolean;
-  timezone: string;
 }
 
 export interface BillingInfo {
   tier: string;
-  price: number;
-  next_billing_date: string;
-  payment_method: {
-    type: string;
-    last4: string;
-  } | null;
+  scans_today: number;
+  scans_limit: number;
+  subscription_status: string | null;
 }
 
 export const api = new ApiClient(API_BASE_URL);

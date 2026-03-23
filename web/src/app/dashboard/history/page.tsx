@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Analysis } from "@/lib/api";
 import ScoreGauge from "@/components/ScoreGauge";
+import DemoBanner from "@/components/DemoBanner";
 
 const demoAnalyses: Analysis[] = [
   {
@@ -113,8 +114,9 @@ function getStatusBadge(status: Analysis["status"]) {
 }
 
 export default function HistoryPage() {
-  const [analyses, setAnalyses] = useState<Analysis[]>(demoAnalyses);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -129,12 +131,12 @@ export default function HistoryPage() {
     async function fetchAnalyses() {
       try {
         const result = await api.getAnalyses(page, 10);
-        if (result.items.length > 0) {
-          setAnalyses(result.items);
-          setTotalPages(result.pages);
-        }
+        setAnalyses(result.items);
+        setTotalPages(result.pages);
+        setIsDemo(false);
       } catch {
-        // Use demo data
+        setAnalyses(demoAnalyses);
+        setIsDemo(true);
       } finally {
         setIsLoading(false);
       }
@@ -149,7 +151,11 @@ export default function HistoryPage() {
 
     try {
       const analysis = await api.startAnalysis(newUrl, newKeyword);
-      setAnalyses((prev) => [analysis, ...prev]);
+      setAnalyses((prev) => {
+        const base = isDemo ? [] : prev;
+        return [analysis, ...base];
+      });
+      setIsDemo(false);
       setNewUrl("");
       setNewKeyword("");
       setShowNewForm(false);
@@ -165,6 +171,8 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-6">
+      {isDemo && <DemoBanner />}
+
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -295,6 +303,33 @@ export default function HistoryPage() {
                       </td>
                     </tr>
                   ))
+                : analyses.length === 0
+                ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-16 text-center">
+                        <svg
+                          className="mx-auto h-10 w-10 text-slate-300"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <circle cx="11" cy="11" r="8" />
+                          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <p className="mt-3 text-sm font-medium text-slate-900">No analyses yet</p>
+                        <p className="mt-1 text-sm text-slate-500">Run your first analysis to see results here.</p>
+                        <button
+                          onClick={() => setShowNewForm(true)}
+                          className="btn-primary mt-4"
+                        >
+                          Start First Analysis
+                        </button>
+                      </td>
+                    </tr>
+                  )
                 : analyses.map((analysis) => (
                     <tr
                       key={analysis.id}
@@ -336,7 +371,8 @@ export default function HistoryPage() {
                         {formatDate(analysis.created_at)}
                       </td>
                     </tr>
-                  ))}
+                  ))
+              }
             </tbody>
           </table>
         </div>

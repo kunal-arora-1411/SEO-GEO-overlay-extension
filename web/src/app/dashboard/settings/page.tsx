@@ -1,16 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth";
-import { api } from "@/lib/api";
+import { api, type BillingInfo } from "@/lib/api";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const [fullName, setFullName] = useState(user?.full_name || "");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [weeklyReports, setWeeklyReports] = useState(true);
+  const [fullName, setFullName] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [weeklyReports, setWeeklyReports] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [billing, setBilling] = useState<BillingInfo | null>(null);
+
+  useEffect(() => {
+    async function loadAll() {
+      const [settingsResult, billingResult] = await Promise.allSettled([
+        api.getSettings(),
+        api.getBillingInfo(),
+      ]);
+
+      if (settingsResult.status === "fulfilled") {
+        setFullName(settingsResult.value.full_name ?? "");
+        setNotificationsEnabled(settingsResult.value.notifications_enabled);
+        setWeeklyReports(settingsResult.value.weekly_reports);
+      } else {
+        setFullName(user?.full_name ?? "");
+      }
+
+      if (billingResult.status === "fulfilled") {
+        setBilling(billingResult.value);
+      }
+
+      setIsLoading(false);
+    }
+    loadAll();
+  }, [user?.full_name]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -24,11 +50,28 @@ export default function SettingsPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch {
-      // Silently fail for demo
+      // Silently fail
     } finally {
       setIsSaving(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8 animate-pulse">
+        <div className="h-8 w-32 rounded-lg bg-slate-200" />
+        <div className="card space-y-4">
+          <div className="h-5 w-24 rounded bg-slate-200" />
+          <div className="h-10 w-full rounded-lg bg-slate-200" />
+          <div className="h-10 w-full rounded-lg bg-slate-200" />
+        </div>
+        <div className="card">
+          <div className="h-5 w-16 rounded bg-slate-200" />
+          <div className="mt-4 h-10 w-full rounded-lg bg-slate-200" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -73,19 +116,43 @@ export default function SettingsPage() {
         <h2 className="text-lg font-semibold text-slate-900">Plan</h2>
         <div className="mt-4 flex items-center justify-between">
           <div>
-            <p className="font-medium text-slate-900">
-              {user?.tier || "Free"} Plan
-            </p>
-            <p className="text-sm text-slate-500">
-              {user?.analyses_remaining ?? 5} analyses remaining this month
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="font-medium text-slate-900 capitalize">
+                {billing?.tier || user?.tier || "Free"} Plan
+              </p>
+              {billing?.subscription_status === "active" && (
+                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">Active</span>
+              )}
+              {billing?.subscription_status === "canceled" && (
+                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">Canceled</span>
+              )}
+            </div>
+            {billing ? (
+              <p className="mt-1 text-sm text-slate-500">
+                {billing.scans_today} / {billing.scans_limit} scans used today
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-slate-500">
+                {user?.analyses_remaining ?? 5} analyses remaining today
+              </p>
+            )}
+            {billing && (
+              <div className="mt-2 h-1.5 w-48 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  className="h-full rounded-full bg-primary-500"
+                  style={{ width: `${Math.min(100, (billing.scans_today / billing.scans_limit) * 100)}%` }}
+                />
+              </div>
+            )}
           </div>
-          <a
-            href="/#pricing"
-            className="btn-primary px-5 py-2"
-          >
-            Upgrade
-          </a>
+          {(!billing || billing.tier === "free" || billing.subscription_status === "canceled") && (
+            <a href="/pricing" className="btn-primary px-5 py-2">
+              Upgrade
+            </a>
+          )}
+          {billing && billing.tier !== "free" && billing.subscription_status === "active" && (
+            <span className="text-sm text-slate-500">Manage via billing portal</span>
+          )}
         </div>
       </div>
 

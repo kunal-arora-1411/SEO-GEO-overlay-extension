@@ -6,6 +6,7 @@ import { api, type Analysis } from "@/lib/api";
 import ScoreGauge from "@/components/ScoreGauge";
 import AnalysisCard from "@/components/AnalysisCard";
 import TrendChart from "@/components/TrendChart";
+import DemoBanner from "@/components/DemoBanner";
 
 // Demo data for when the API is not available
 const demoAnalyses: Analysis[] = [
@@ -55,22 +56,21 @@ const demoAnalyses: Analysis[] = [
   },
 ];
 
-const demoTrendData = [62, 65, 68, 64, 71, 74, 72, 78, 75, 80, 82, 85];
-
 export default function DashboardHomePage() {
   const { user } = useAuth();
-  const [analyses, setAnalyses] = useState<Analysis[]>(demoAnalyses);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     async function fetchAnalyses() {
       try {
-        const result = await api.getAnalyses(1, 5);
-        if (result.items.length > 0) {
-          setAnalyses(result.items);
-        }
+        const result = await api.getAnalyses(1, 20);
+        setAnalyses(result.items);
+        setIsDemo(false);
       } catch {
-        // Use demo data if API is unavailable
+        setAnalyses(demoAnalyses);
+        setIsDemo(true);
       } finally {
         setIsLoading(false);
       }
@@ -78,18 +78,34 @@ export default function DashboardHomePage() {
     fetchAnalyses();
   }, []);
 
-  const avgSeo = Math.round(
-    analyses.reduce((sum, a) => sum + a.seo_score, 0) / analyses.length
-  );
-  const avgGeo = Math.round(
-    analyses.reduce((sum, a) => sum + a.geo_score, 0) / analyses.length
-  );
-  const avgOverall = Math.round(
-    analyses.reduce((sum, a) => sum + a.overall_score, 0) / analyses.length
-  );
+  const completed = analyses.filter((a) => a.status === "completed");
+  const avgSeo = completed.length
+    ? Math.round(completed.reduce((sum, a) => sum + a.seo_score, 0) / completed.length)
+    : 0;
+  const avgGeo = completed.length
+    ? Math.round(completed.reduce((sum, a) => sum + a.geo_score, 0) / completed.length)
+    : 0;
+  const avgOverall = completed.length
+    ? Math.round(completed.reduce((sum, a) => sum + a.overall_score, 0) / completed.length)
+    : 0;
+
+  // Trend data: sort by date ascending, take last 12 scores
+  const sorted = [...analyses]
+    .filter((a) => a.status === "completed")
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const seoTrend = sorted.map((a) => a.seo_score);
+  const geoTrend = sorted.map((a) => a.geo_score);
+
+  // Count analyses created in the last 7 days
+  const oneWeekAgo = Date.now() - 7 * 86400000;
+  const thisWeekCount = analyses.filter(
+    (a) => new Date(a.created_at).getTime() > oneWeekAgo
+  ).length;
 
   return (
     <div className="space-y-8">
+      {isDemo && <DemoBanner />}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
@@ -107,34 +123,30 @@ export default function DashboardHomePage() {
           <p className="mt-2 text-3xl font-bold text-slate-900">
             {analyses.length}
           </p>
-          <p className="mt-1 text-xs text-green-600">
-            +3 this week
-          </p>
+          {thisWeekCount > 0 ? (
+            <p className="mt-1 text-xs text-green-600">+{thisWeekCount} this week</p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-400">No activity this week</p>
+          )}
         </div>
 
         <div className="card">
           <p className="text-sm font-medium text-slate-500">Avg. SEO Score</p>
           <div className="mt-2 flex items-end gap-3">
-            <span className="text-3xl font-bold text-slate-900">{avgSeo}</span>
-            <TrendChart
-              data={demoTrendData}
-              width={80}
-              height={32}
-              color="#3b82f6"
-            />
+            <span className="text-3xl font-bold text-slate-900">{avgSeo || "—"}</span>
+            {seoTrend.length >= 2 && (
+              <TrendChart data={seoTrend} width={80} height={32} color="#3b82f6" />
+            )}
           </div>
         </div>
 
         <div className="card">
           <p className="text-sm font-medium text-slate-500">Avg. GEO Score</p>
           <div className="mt-2 flex items-end gap-3">
-            <span className="text-3xl font-bold text-slate-900">{avgGeo}</span>
-            <TrendChart
-              data={[45, 48, 52, 50, 55, 58, 62, 60, 65, 68, 70, avgGeo]}
-              width={80}
-              height={32}
-              color="#7c3aed"
-            />
+            <span className="text-3xl font-bold text-slate-900">{avgGeo || "—"}</span>
+            {geoTrend.length >= 2 && (
+              <TrendChart data={geoTrend} width={80} height={32} color="#7c3aed" />
+            )}
           </div>
         </div>
 
@@ -151,25 +163,27 @@ export default function DashboardHomePage() {
         </div>
       </div>
 
-      {/* Score overview */}
-      <div className="card">
-        <h2 className="text-lg font-semibold text-slate-900">
-          Score Overview
-        </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Average scores across all your analyses
-        </p>
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-8 sm:gap-12">
-          <ScoreGauge score={avgSeo} size={110} label="SEO Score" />
-          <ScoreGauge
-            score={avgOverall}
-            size={140}
-            strokeWidth={10}
-            label="Overall Score"
-          />
-          <ScoreGauge score={avgGeo} size={110} label="GEO Score" />
+      {/* Score overview — only show when there is data */}
+      {completed.length > 0 && (
+        <div className="card">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Score Overview
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Average scores across your {completed.length} completed {completed.length === 1 ? "analysis" : "analyses"}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-8 sm:gap-12">
+            <ScoreGauge score={avgSeo} size={110} label="SEO Score" />
+            <ScoreGauge
+              score={avgOverall}
+              size={140}
+              strokeWidth={10}
+              label="Overall Score"
+            />
+            <ScoreGauge score={avgGeo} size={110} label="GEO Score" />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Recent analyses */}
       <div>
@@ -188,10 +202,7 @@ export default function DashboardHomePage() {
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="card animate-pulse"
-              >
+              <div key={i} className="card animate-pulse">
                 <div className="flex items-center gap-6">
                   <div className="h-[72px] w-[72px] rounded-full bg-slate-200" />
                   <div className="flex-1 space-y-3">
@@ -202,6 +213,16 @@ export default function DashboardHomePage() {
                 </div>
               </div>
             ))}
+          </div>
+        ) : analyses.length === 0 ? (
+          <div className="card flex flex-col items-center justify-center py-12 text-center">
+            <svg className="h-10 w-10 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <p className="mt-3 text-sm font-medium text-slate-900">No analyses yet</p>
+            <p className="mt-1 text-sm text-slate-500">Run your first analysis to see results here.</p>
+            <a href="/dashboard/history" className="btn-primary mt-4 text-sm">Start First Analysis</a>
           </div>
         ) : (
           <div className="space-y-4">

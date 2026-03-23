@@ -18,6 +18,9 @@ class User(UUIDPrimaryKeyMixin, Base):
     tier: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    weekly_reports: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
     stripe_customer_id: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )

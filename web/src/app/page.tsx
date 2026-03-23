@@ -2,336 +2,269 @@
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import PricingCard from "@/components/PricingCard";
-import ScoreGauge from "@/components/ScoreGauge";
+import ScrollReveal, { StaggerContainer, StaggerItem } from "@/components/ScrollReveal";
+import FloatingParticles from "@/components/FloatingParticles";
+import MagneticButton from "@/components/MagneticButton";
+import ScrollProgress from "@/components/ScrollProgress";
+import ParallaxSection from "@/components/ParallaxSection";
+import AnimatedCounter from "@/components/AnimatedCounter";
+import ScrollTutorial from "@/components/ScrollTutorial";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
 const features = [
   {
-    title: "SEO Analysis",
-    description:
-      "Deep analysis of on-page SEO factors including meta tags, headings, content structure, internal linking, and technical performance.",
+    title: "Deep SEO Analysis",
+    description: "Comprehensive analysis of on-page SEO factors including meta tags, headings, content structure, and technical performance.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8" />
-        <path d="m21 21-4.35-4.35" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M12 12l4-4" />
       </svg>
     ),
-    color: "bg-blue-50 text-blue-600",
   },
   {
-    title: "GEO Scoring",
-    description:
-      "Evaluate how well your content performs for AI-powered search engines like ChatGPT, Perplexity, and Google SGE with our proprietary scoring.",
+    title: "Generative Engine Scoring",
+    description: "Evaluate how your content performs for AI-powered search engines like ChatGPT, Perplexity, and Google SGE.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
       </svg>
     ),
-    color: "bg-purple-50 text-purple-600",
   },
   {
-    title: "AI Rewriting",
-    description:
-      "Get AI-powered content suggestions that maintain your voice while improving discoverability across both traditional and AI search engines.",
+    title: "AI Rewriting Engine",
+    description: "Get AI-powered content suggestions that maintain your voice while improving discoverability across all channels.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 20h9" />
-        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
       </svg>
     ),
-    color: "bg-amber-50 text-amber-600",
   },
   {
     title: "Schema Generation",
-    description:
-      "Automatically generate structured data markup (JSON-LD) to help search engines and AI assistants understand your content better.",
+    description: "Automatically generate structured data markup to help search engines and AI assistants understand your content.",
     icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="16 18 22 12 16 6" />
-        <polyline points="8 6 2 12 8 18" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
       </svg>
     ),
-    color: "bg-green-50 text-green-600",
   },
 ];
 
-const pricingPlans = [
-  {
-    name: "Free",
-    price: "Free",
-    description: "Perfect for getting started",
-    features: [
-      "5 analyses per month",
-      "Basic SEO scoring",
-      "Basic GEO scoring",
-      "Chrome extension",
-      "Community support",
-    ],
-    cta: "Get Started Free",
-    ctaHref: "/register",
-  },
-  {
-    name: "Starter",
-    price: "$29",
-    description: "For individual creators and bloggers",
-    features: [
-      "50 analyses per month",
-      "Advanced SEO & GEO scoring",
-      "AI content suggestions",
-      "Schema generation",
-      "Export reports (PDF)",
-      "Email support",
-    ],
-    cta: "Start Free Trial",
-    ctaHref: "/register",
-  },
-  {
-    name: "Pro",
-    price: "$79",
-    description: "For professionals and small teams",
-    features: [
-      "Unlimited analyses",
-      "Full site audits",
-      "Competitor tracking (5 domains)",
-      "AI rewriting engine",
-      "API access",
-      "Priority support",
-      "Team seats (3 included)",
-    ],
-    highlighted: true,
-    cta: "Start Free Trial",
-    ctaHref: "/register",
-  },
-  {
-    name: "Agency",
-    price: "$199",
-    description: "For agencies and large teams",
-    features: [
-      "Unlimited everything",
-      "White-label reports",
-      "Competitor tracking (25 domains)",
-      "Custom integrations",
-      "Dedicated account manager",
-      "SLA guarantee",
-      "Team seats (10 included)",
-      "SSO & audit logs",
-    ],
-    cta: "Contact Sales",
-    ctaHref: "/register",
-  },
-];
-
-const stats = [
-  { value: "50K+", label: "Analyses Run" },
-  { value: "12K+", label: "Active Users" },
-  { value: "94%", label: "Score Improvement" },
-  { value: "4.8/5", label: "User Rating" },
-];
+const headlineWords = "Experience liftoff with AI search optimization".split(" ");
 
 export default function LandingPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  const handleCardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    e.currentTarget.style.setProperty("--mouse-x", `${x}px`);
+    e.currentTarget.style.setProperty("--mouse-y", `${y}px`);
+  };
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-ai-gradient relative overflow-x-hidden">
+      {/* Subtle background overlay */}
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-30 bg-white/40" />
+      <ScrollProgress />
       <Navbar />
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        {/* Background gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-primary-50/50 via-white to-white" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-[600px] w-[900px] rounded-full bg-primary-100/30 blur-3xl" />
+      <main>
+        {/* Hero */}
+        <section className="relative pt-32 pb-24 lg:pt-44 lg:pb-36 px-4 sm:px-6 lg:px-8 mx-auto max-w-6xl overflow-hidden">
+          <div className="absolute inset-0 -top-16">
+            {mounted && <FloatingParticles />}
+          </div>
 
-        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-24 sm:px-6 sm:pt-32 lg:px-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <div className="animate-fade-in-up">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-4 py-1.5 text-sm font-medium text-primary-700">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75"></span>
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500"></span>
-                </span>
-                Now with Google SGE & Perplexity AI support
+          <ParallaxSection offset={-60} speed={0.5} className="text-center max-w-4xl mx-auto relative z-10">
+            <ScrollReveal>
+              <div className="flex items-center justify-center gap-2 mb-10">
+                <span className="text-lg font-medium tracking-tight text-slate-400">SEO & GEO Optimizer</span>
               </div>
-            </div>
+            </ScrollReveal>
 
-            <h1 className="animate-fade-in-up animate-delay-100 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-              Optimize for{" "}
-              <span className="bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">
-                AI Search Engines
-              </span>
+            {/* Typewriter Typography */}
+            <h1 className="text-[3.2rem] md:text-[4.5rem] lg:text-[5rem] font-medium tracking-[-0.02em] leading-[1.05] text-slate-900 mb-10 min-h-[2.1em] md:min-h-[2.15em]">
+              {"Experience liftoff with AI search optimization".split("").map((char, i) => (
+                <motion.span
+                  key={i}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{
+                    duration: 0.01,
+                    delay: i * 0.04,
+                    ease: "linear",
+                  }}
+                >
+                  {char}
+                </motion.span>
+              ))}
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{
+                  duration: 0.8,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                  delay: 45 * 0.04, // Start blinking after typing finishes
+                }}
+                className="inline-block w-[3px] h-[0.9em] bg-primary-500 ml-1 translate-y-1"
+              />
             </h1>
 
-            <p className="animate-fade-in-up animate-delay-200 mt-6 text-lg leading-relaxed text-slate-600 sm:text-xl">
-              The first platform that scores and optimizes your content for both
-              traditional SEO and AI-powered search engines. Get discovered by
-              ChatGPT, Perplexity, Google SGE, and more.
-            </p>
-
-            <div className="animate-fade-in-up animate-delay-300 mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-              <a href="/register" className="btn-primary px-8 py-3.5 text-base">
-                Get Started Free
-              </a>
-              <a href="#features" className="btn-secondary px-8 py-3.5 text-base">
-                See How It Works
-              </a>
-            </div>
-
-            {/* Hero gauge animation */}
-            <div className="animate-fade-in-up animate-delay-400 mt-16 flex items-center justify-center gap-8 sm:gap-12">
-              <ScoreGauge score={87} size={100} label="SEO Score" />
-              <ScoreGauge score={72} size={130} strokeWidth={10} label="Overall" />
-              <ScoreGauge score={65} size={100} label="GEO Score" />
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="mt-20 grid grid-cols-2 gap-8 sm:grid-cols-4">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-3xl font-bold text-slate-900">
-                  {stat.value}
-                </div>
-                <div className="mt-1 text-sm text-slate-500">{stat.label}</div>
+            <ScrollReveal delay={0.6}>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-12">
+                <MagneticButton>
+                  <Link href="/register" className="btn-primary text-base px-8 py-4 gap-2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Get Started Free
+                  </Link>
+                </MagneticButton>
+                <MagneticButton strength={0.15}>
+                  <Link href="#features" className="btn-secondary text-base px-8 py-4">
+                    Explore features
+                  </Link>
+                </MagneticButton>
               </div>
-            ))}
-          </div>
+            </ScrollReveal>
+          </ParallaxSection>
+        </section>
+
+        <ScrollTutorial />
+
+        {/* Wave Divider */}
+        <div className="w-full text-slate-50/70">
+          <svg viewBox="0 0 1440 100" fill="currentColor" preserveAspectRatio="none" className="w-full h-12 md:h-24 block">
+            <path d="M0,0 C320,80 420,80 720,40 C1020,0 1120,0 1440,40 L1440,100 L0,100 Z" />
+          </svg>
         </div>
-      </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Everything you need to rank in the AI era
-            </h2>
-            <p className="mt-4 text-lg text-slate-600">
-              Traditional SEO is not enough. Our platform bridges the gap between
-              classic search optimization and the new world of AI-powered discovery.
-            </p>
+        {/* Features (Now starting with bg-slate-50/70) */}
+        <section id="features" className="py-24 bg-slate-50/70">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ParallaxSection offset={20} speed={0.3}>
+              <ScrollReveal className="text-center max-w-xl mx-auto mb-20">
+                <h2 className="text-3xl md:text-[2.8rem] font-medium tracking-tight text-slate-900 leading-tight">
+                  Built for the new era of search
+                </h2>
+              </ScrollReveal>
+            </ParallaxSection>
+
+            <StaggerContainer className="grid md:grid-cols-2 gap-6" staggerDelay={0.15}>
+              {features.map((feature, i) => (
+                <StaggerItem key={i}>
+                  <ParallaxSection offset={10 * (i % 2 === 0 ? 1 : -0.5)} speed={0.2}>
+                    <div 
+                      className="card-glass group spotlight-card p-[1px] rounded-[17px] cursor-default bg-slate-200"
+                      onMouseMove={handleCardMouseMove}
+                    >
+                      <div className="spotlight-content p-8">
+                        <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-6 text-slate-500 group-hover:bg-primary-50 group-hover:text-primary-600 group-hover:scale-110 transition-all duration-300">
+                          {feature.icon}
+                        </div>
+                        <h3 className="text-xl font-medium text-slate-900 mb-3">{feature.title}</h3>
+                        <p className="text-slate-500 leading-relaxed">{feature.description}</p>
+                      </div>
+                    </div>
+                  </ParallaxSection>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
           </div>
+        </section>
 
-          <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {features.map((feature) => (
-              <div
-                key={feature.title}
-                className="card group transition-shadow hover:shadow-md"
-              >
-                <div
-                  className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl ${feature.color}`}
-                >
-                  {feature.icon}
-                </div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  {feature.title}
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  {feature.description}
+        {/* Another wave */}
+        <div className="w-full text-slate-50/70 relative rotate-180">
+          <svg viewBox="0 0 1440 100" fill="currentColor" preserveAspectRatio="none" className="w-full h-12 md:h-24 block">
+            <path d="M0,0 C320,80 420,80 720,40 C1020,0 1120,0 1440,40 L1440,100 L0,100 Z" />
+          </svg>
+        </div>
+
+        {/* How It Works */}
+        <section className="py-24">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <ParallaxSection offset={30} speed={0.4}>
+              <ScrollReveal className="text-center max-w-xl mx-auto mb-24">
+                <h2 className="text-3xl md:text-[2.8rem] font-medium tracking-tight text-slate-900 leading-tight">
+                  Three steps to better rankings
+                </h2>
+              </ScrollReveal>
+            </ParallaxSection>
+
+            <StaggerContainer className="grid md:grid-cols-3 gap-12" staggerDelay={0.2}>
+              {[
+                { step: "01", title: "Enter your URL", description: "Paste any page URL and keyword. Our engine analyzes every content signal." },
+                { step: "02", title: "Review your scores", description: "Get detailed SEO and GEO scores with clear, actionable breakdowns." },
+                { step: "03", title: "Optimize & ship", description: "Apply AI recommendations, add schema markup, and track improvements." },
+              ].map((item) => (
+                <StaggerItem key={item.step} className="text-center relative group">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-12 bg-gradient-to-b from-transparent to-primary-200 group-hover:to-primary-500 transition-colors duration-500" />
+                  <div className="pt-16 pb-4">
+                    <div className="text-sm font-mono text-primary-500 tracking-widest mb-5">{item.step}</div>
+                    <h3 className="text-xl font-medium text-slate-900 mb-3">{item.title}</h3>
+                    <p className="text-slate-500 leading-relaxed">{item.description}</p>
+                  </div>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+          </div>
+        </section>
+
+        {/* Stats */}
+        <section className="py-24 bg-slate-900 text-white relative overflow-hidden">
+          <div className="absolute inset-0 opacity-20" style={{ background: "radial-gradient(circle at center, #3b82f6 0%, transparent 70%)" }} />
+          
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <StaggerContainer className="grid grid-cols-2 md:grid-cols-4 gap-10" staggerDelay={0.15}>
+              {[
+                { value: 50000, suffix: "+", label: "Analyses" },
+                { value: 12000, suffix: "+", label: "Users" },
+                { value: 94, suffix: "%", label: "Improvement" },
+                { value: 4.8, suffix: "", label: "Rating" },
+              ].map((stat, i) => (
+                <StaggerItem key={i} className="text-center">
+                  <div className="text-4xl md:text-5xl font-medium tracking-tight mb-2">
+                    <AnimatedCounter value={stat.value} suffix={stat.suffix} />
+                  </div>
+                  <div className="text-sm text-slate-400 tracking-wide uppercase">{stat.label}</div>
+                </StaggerItem>
+              ))}
+            </StaggerContainer>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="py-32 relative">
+          <ParallaxSection offset={-20} speed={0.4}>
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+              <ScrollReveal>
+                <h2 className="text-3xl md:text-[3.2rem] font-medium tracking-tight text-slate-900 leading-tight mb-6">
+                  Ready to get started?
+                </h2>
+                <p className="text-lg md:text-xl text-slate-500 mb-12 max-w-lg mx-auto leading-relaxed">
+                  Join thousands already optimizing for AI-powered search.
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="border-y border-slate-200 bg-slate-50 py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              How it works
-            </h2>
-            <p className="mt-4 text-lg text-slate-600">
-              Get actionable insights in three simple steps
-            </p>
-          </div>
-
-          <div className="mt-16 grid gap-8 md:grid-cols-3">
-            {[
-              {
-                step: "1",
-                title: "Enter Your URL",
-                description:
-                  "Paste any page URL and target keyword. Our engine crawls the page and extracts all relevant content signals.",
-              },
-              {
-                step: "2",
-                title: "Get Your Scores",
-                description:
-                  "Receive detailed SEO and GEO scores with a breakdown of what is working and what needs improvement.",
-              },
-              {
-                step: "3",
-                title: "Optimize & Track",
-                description:
-                  "Apply AI-powered recommendations, generate schema markup, and track your improvement over time.",
-              },
-            ].map((item) => (
-              <div key={item.step} className="relative text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-600 text-lg font-bold text-white">
-                  {item.step}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                  <MagneticButton>
+                    <Link href="/register" className="btn-primary text-base px-9 py-4.5 shadow-lg shadow-primary-500/20">
+                      Get Started Free
+                    </Link>
+                  </MagneticButton>
+                  <MagneticButton strength={0.2}>
+                    <Link href="/pricing" className="btn-secondary text-base px-9 py-4.5">
+                      View Pricing
+                    </Link>
+                  </MagneticButton>
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  {item.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              Simple, transparent pricing
-            </h2>
-            <p className="mt-4 text-lg text-slate-600">
-              Start free and scale as you grow. No hidden fees.
-            </p>
-          </div>
-
-          <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            {pricingPlans.map((plan) => (
-              <PricingCard key={plan.name} {...plan} />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="border-t border-slate-200 bg-slate-900 py-24">
-        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-            Ready to optimize for the future of search?
-          </h2>
-          <p className="mt-4 text-lg text-slate-300">
-            Join thousands of content creators and SEO professionals who are
-            already optimizing for AI-powered search engines.
-          </p>
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <a
-              href="/register"
-              className="btn-primary bg-white px-8 py-3.5 text-base text-slate-900 hover:bg-slate-100"
-            >
-              Get Started Free
-            </a>
-            <a
-              href="#"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-600 px-8 py-3.5 text-base font-semibold text-white transition-all hover:border-slate-500 hover:bg-slate-800"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 3.091A7.07 7.07 0 0112 4.93c1.688 0 3.233.59 4.45 1.572l3.518-3.518A11.944 11.944 0 0012 0z" fill="#EA4335"/>
-                <path d="M23.49 12.275c0-.82-.069-1.61-.197-2.375H12v4.493h6.452a5.524 5.524 0 01-2.396 3.623l3.868 3.002c2.255-2.08 3.566-5.143 3.566-8.743z" fill="#4285F4"/>
-                <path d="M5.265 14.294A7.098 7.098 0 014.93 12c0-.8.12-1.572.335-2.294L1.312 6.615A11.965 11.965 0 000 12c0 1.934.467 3.762 1.312 5.385l3.953-3.091z" fill="#FBBC05"/>
-                <path d="M12 24c3.24 0 5.956-1.07 7.942-2.907l-3.868-3.002c-1.074.72-2.45 1.145-4.074 1.145a7.07 7.07 0 01-6.735-4.942l-3.953 3.091A11.944 11.944 0 0012 24z" fill="#34A853"/>
-              </svg>
-              Install Chrome Extension
-            </a>
-          </div>
-        </div>
-      </section>
+              </ScrollReveal>
+            </div>
+          </ParallaxSection>
+        </section>
+      </main>
 
       <Footer />
     </div>

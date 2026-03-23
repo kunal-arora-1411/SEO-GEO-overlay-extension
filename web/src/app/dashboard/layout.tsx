@@ -54,11 +54,13 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-ai-gradient relative overflow-hidden">
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-20 bg-white/40" />
+
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -73,26 +75,24 @@ export default function DashboardLayout({
       </div>
 
       {/* Sidebar - desktop */}
-      <div className="hidden lg:flex">
+      <div className="hidden lg:flex relative z-10">
         <DashboardSidebar />
       </div>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden relative z-10">
         {/* Mobile top bar */}
-        <div className="flex h-16 items-center gap-4 border-b border-slate-200 bg-white px-4 lg:hidden">
+        <div className="flex h-16 items-center gap-4 border-b border-white/60 bg-white/70 backdrop-blur-md px-4 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100/80"
             aria-label="Open sidebar"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <span className="text-lg font-bold text-slate-900">
-            SEO<span className="text-primary-600">&</span>GEO
-          </span>
+          <span className="text-sm font-medium tracking-tight text-slate-800">SEO & GEO Optimizer</span>
         </div>
 
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">

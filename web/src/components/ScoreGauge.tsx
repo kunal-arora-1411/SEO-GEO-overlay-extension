@@ -12,7 +12,7 @@ interface ScoreGaugeProps {
 
 function getScoreColor(score: number): string {
   if (score >= 80) return "#22c55e";
-  if (score >= 60) return "#eab308";
+  if (score >= 60) return "#3b82f6";
   if (score >= 40) return "#f97316";
   return "#ef4444";
 }
@@ -93,14 +93,14 @@ export default function ScoreGauge({
           {displayScore}
         </span>
         <span
-          className="text-xs text-slate-500"
+          className="text-xs text-slate-400"
           style={{ fontSize: size * 0.09 }}
         >
           {getScoreLabel(score)}
         </span>
       </div>
       {label && (
-        <span className="mt-2 text-xs font-medium text-slate-600">{label}</span>
+        <span className="mt-2 text-xs font-medium text-slate-500">{label}</span>
       )}
     </div>
   );
