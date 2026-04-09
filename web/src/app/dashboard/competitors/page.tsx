@@ -3,35 +3,23 @@
 import { useEffect, useState } from "react";
 import { api, type Competitor } from "@/lib/api";
 
-const demoCompetitors: Competitor[] = [
-  {
-    id: "1",
-    domain: "competitor-a.com",
-    last_score: 78,
-    trend: [65, 68, 72, 74, 78],
-    tracked_since: new Date(Date.now() - 30 * 86400000).toISOString(),
-  },
-  {
-    id: "2",
-    domain: "competitor-b.com",
-    last_score: 85,
-    trend: [80, 82, 83, 84, 85],
-    tracked_since: new Date(Date.now() - 14 * 86400000).toISOString(),
-  },
-];
-
 export default function CompetitorsPage() {
-  const [competitors, setCompetitors] = useState<Competitor[]>(demoCompetitors);
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [newDomain, setNewDomain] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchCompetitors() {
       try {
         const result = await api.getCompetitors();
-        if (result.length > 0) setCompetitors(result);
+        setCompetitors(result);
       } catch {
-        // Use demo data
+        // leave as empty array
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchCompetitors();
@@ -40,23 +28,27 @@ export default function CompetitorsPage() {
   const handleAdd = async () => {
     if (!newDomain.trim()) return;
     setIsAdding(true);
+    setAddError(null);
     try {
       const competitor = await api.addCompetitor(newDomain.trim());
       setCompetitors((prev) => [...prev, competitor]);
       setNewDomain("");
-    } catch {
-      // Silently fail for demo
+    } catch (err: unknown) {
+      const detail = (err as { detail?: string })?.detail;
+      setAddError(detail || "Failed to add competitor. Please try again.");
     } finally {
       setIsAdding(false);
     }
   };
 
   const handleRemove = async (id: string) => {
+    setRemoveError(null);
     try {
       await api.removeCompetitor(id);
       setCompetitors((prev) => prev.filter((c) => c.id !== id));
-    } catch {
-      // Silently fail
+    } catch (err: unknown) {
+      const detail = (err as { detail?: string })?.detail;
+      setRemoveError(detail || "Failed to remove competitor.");
     }
   };
 
@@ -69,9 +61,18 @@ export default function CompetitorsPage() {
         </p>
       </div>
 
+      {removeError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {removeError}
+        </div>
+      )}
+
       {/* Add competitor */}
       <div className="card">
         <h2 className="text-lg font-semibold text-slate-900">Add Competitor</h2>
+        {addError && (
+          <p className="mt-2 text-sm text-red-600">{addError}</p>
+        )}
         <div className="mt-4 flex gap-3">
           <input
             type="text"
@@ -93,7 +94,12 @@ export default function CompetitorsPage() {
 
       {/* Competitor list */}
       <div className="space-y-4">
-        {competitors.map((competitor) => (
+        {isLoading ? (
+          <div className="card animate-pulse py-8 text-center text-sm text-slate-400">
+            Loading competitors...
+          </div>
+        ) : null}
+        {!isLoading && competitors.map((competitor) => (
           <div key={competitor.id} className="card flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-600">
@@ -127,7 +133,7 @@ export default function CompetitorsPage() {
           </div>
         ))}
 
-        {competitors.length === 0 && (
+        {!isLoading && competitors.length === 0 && (
           <div className="card text-center">
             <p className="text-slate-500">No competitors tracked yet. Add one above to get started.</p>
           </div>

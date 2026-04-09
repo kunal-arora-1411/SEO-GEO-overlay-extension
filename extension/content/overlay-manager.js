@@ -38,12 +38,21 @@ class OverlayManager {
     this.clear();
     if (!analysis) return;
 
-    // Run InlineAnalyzer
+    // Load persisted dismissed state for this domain before analyzing
+    var domain = (analysis.page_data && analysis.page_data.domain) || "";
+    var self = this;
+    this._inlineAnalyzer.loadDismissedState(domain, function () {
+      self._renderWithResult(analysis);
+    });
+  }
+
+  _renderWithResult(analysis) {
+    // Run InlineAnalyzer — pass geoResult for deterministic suggestions
     var result = this._inlineAnalyzer.analyze(
       analysis.page_data,
       analysis.seo,
       analysis.readability,
-      analysis.suggestions || []
+      analysis.geo || null
     );
 
     // 1. Meta bar at top
@@ -64,6 +73,25 @@ class OverlayManager {
 
     // 5. Start position tracking
     this._startTracking();
+  }
+
+  // ─── DISMISS ANNOTATION ──────────────────────────────────────
+
+  /**
+   * Called by the dismiss button on annotation badges.
+   * Hides the badge from the DOM and persists the dismissal.
+   * @param {string} annotationId
+   * @param {Element} badgeEl
+   */
+  _dismissAnnotation(annotationId, badgeEl) {
+    this._inlineAnalyzer.markDismissed(annotationId);
+    if (badgeEl && badgeEl.parentNode) {
+      badgeEl.parentNode.removeChild(badgeEl);
+    }
+    // Also remove from tracked list so position tracking skips it
+    this._tracked = this._tracked.filter(function (t) {
+      return t.annotation && t.annotation.id !== annotationId;
+    });
   }
 
   clear() {
@@ -231,6 +259,39 @@ class OverlayManager {
         geoSec.appendChild(catEl);
       }
       body.appendChild(geoSec);
+
+      // GEO optimization tips list
+      var geoIssues = analysis.geo.issues || [];
+      if (geoIssues.length > 0) {
+        var tipSec = document.createElement("div");
+        tipSec.className = "sgo-sec";
+        tipSec.innerHTML = '<div class="sgo-sec-hdr">Optimization Tips <span class="sgo-pill">' + geoIssues.length + '</span></div>';
+        var tipList = document.createElement("div");
+        tipList.className = "sgo-issue-list";
+        var maxTips = Math.min(geoIssues.length, 8);
+        for (var ti = 0; ti < maxTips; ti++) {
+          var tip = geoIssues[ti];
+          var tipItem = document.createElement("div");
+          tipItem.className = "sgo-iss";
+          var tipIcon = tip.type === "error" ? "E" : (tip.type === "warning" ? "W" : "i");
+          var tipMsg = (tip.suggestion && tip.suggestion.message) ? tip.suggestion.message : tip.message;
+          var tipFix = tip.suggestion && tip.suggestion.fix ? tip.suggestion.fix : null;
+          tipItem.innerHTML =
+            '<span class="sgo-iss-ic sgo-iss-ic--' + this._esc(tip.type || "info") + '">' + tipIcon + '</span>' +
+            '<div class="sgo-iss-body"><span class="sgo-iss-msg">' + this._esc(tipMsg) + '</span>' +
+            (tipFix ? '<div class="sgo-iss-fix">\u2192 ' + this._esc(tipFix) + '</div>' : '') +
+            '</div>';
+          tipList.appendChild(tipItem);
+        }
+        if (geoIssues.length > maxTips) {
+          var tipMore = document.createElement("div");
+          tipMore.className = "sgo-iss sgo-iss--more";
+          tipMore.textContent = "+ " + (geoIssues.length - maxTips) + " more";
+          tipList.appendChild(tipMore);
+        }
+        tipSec.appendChild(tipList);
+        body.appendChild(tipSec);
+      }
     }
 
     panel.appendChild(body);
@@ -270,10 +331,12 @@ class OverlayManager {
   _renderAnnotation(ann) {
     if (ann.dismissed) return;
     switch (ann.elementType) {
-      case "heading":   this._renderHeading(ann); break;
-      case "paragraph": this._renderParagraph(ann); break;
-      case "link":      this._renderLink(ann); break;
-      case "image":     this._renderImage(ann); break;
+      case "heading":       this._renderHeading(ann); break;
+      case "paragraph":     this._renderParagraph(ann); break;
+      case "link":          this._renderLink(ann); break;
+      case "image":         this._renderImage(ann); break;
+      case "performance":   this._renderFloatingBadge(ann); break;
+      case "accessibility": this._renderFloatingBadge(ann); break;
     }
   }
 
@@ -291,11 +354,16 @@ class OverlayManager {
     tag.className = "sgo-tag sgo-tag--" + ann.severity;
     tag.innerHTML = '<span class="sgo-tag-txt">' + ann.tagName.toUpperCase() + '</span>';
 
-    // Dismiss
+    // Dismiss — persists across page reloads
     var dismiss = document.createElement("button");
     dismiss.className = "sgo-tag-x";
+    dismiss.title = "Dismiss this annotation";
     dismiss.textContent = "\u00D7";
-    dismiss.addEventListener("click", function (e) { e.stopPropagation(); wrap.style.display = "none"; });
+    var self = this;
+    dismiss.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self._dismissAnnotation(ann.id, wrap);
+    });
     tag.appendChild(dismiss);
 
     // Tooltip
@@ -323,6 +391,18 @@ class OverlayManager {
     var badge = document.createElement("div");
     badge.className = "sgo-p-badge sgo-p-badge--" + ann.severity;
     badge.textContent = (ann.metrics ? ann.metrics.words : "?") + "w";
+
+    // Dismiss button on paragraph badge
+    var pDismiss = document.createElement("button");
+    pDismiss.className = "sgo-tag-x";
+    pDismiss.title = "Dismiss this annotation";
+    pDismiss.textContent = "\u00D7";
+    var self = this;
+    pDismiss.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self._dismissAnnotation(ann.id, stripe);
+    });
+    badge.appendChild(pDismiss);
 
     // Tooltip
     var tooltip = this._buildTooltip(ann);
@@ -379,6 +459,48 @@ class OverlayManager {
     this._track(wrap, el, "border");
   }
 
+  // ═══ FLOATING BADGE (performance / accessibility — no specific element) ═══
+
+  _renderFloatingBadge(ann) {
+    var self = this;
+    var badge = document.createElement("div");
+    badge.className = "sgo-float-badge sgo-float-badge--" + ann.severity;
+    if (ann.dismissed) {
+      badge.style.display = "none";
+    }
+
+    // Icon label
+    var label = document.createElement("span");
+    label.className = "sgo-float-badge__label";
+    var typeLabel = ann.elementType === "performance" ? "Perf" : "A11y";
+    label.textContent = typeLabel;
+    badge.appendChild(label);
+
+    // Tooltip
+    var tooltip = this._buildTooltip(ann);
+    badge.appendChild(tooltip);
+    badge.addEventListener("mouseenter", function () { tooltip.style.display = "block"; });
+    badge.addEventListener("mouseleave", function () { tooltip.style.display = "none"; });
+
+    // Dismiss button
+    var dismissBtn = document.createElement("button");
+    dismissBtn.className = "sgo-float-badge__dismiss";
+    dismissBtn.textContent = "\u00D7";
+    dismissBtn.title = "Dismiss";
+    dismissBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      self._dismissAnnotation(ann.id, badge);
+    });
+    badge.appendChild(dismissBtn);
+
+    // Stack vertically — offset by index among floating badges
+    var floatingCount = this.shadowRoot.querySelectorAll(".sgo-float-badge").length;
+    badge.style.top = (80 + floatingCount * 52) + "px";
+
+    this.shadowRoot.appendChild(badge);
+    // Fixed-position — no DOM target tracking needed; cleaned up via shadowRoot on destroy()
+  }
+
   // ═══ STRUCTURAL INSERT ════════════════════════════════════
 
   _renderStructuralInsert(insert) {
@@ -416,27 +538,46 @@ class OverlayManager {
     tt.className = "sgo-tt";
     tt.style.display = "none";
 
-    // Header
+    // Header — show tag name + element text excerpt
     var hdr = document.createElement("div");
     hdr.className = "sgo-tt-hdr sgo-tt-hdr--" + ann.severity;
-    hdr.textContent = ann.tagName.toUpperCase() + " Element";
+    var headerLabel = (ann.tagName || ann.elementType || "page").toUpperCase();
+    if (ann.elementText) {
+      headerLabel += ": \u201C" + this._trunc(ann.elementText, 42) + "\u201D";
+    }
+    hdr.textContent = headerLabel;
     tt.appendChild(hdr);
 
-    // Issues
-    for (var i = 0; i < ann.issues.length; i++) {
-      var iss = ann.issues[i];
+    // Issues — sorted by impact descending
+    var sortedIssues = ann.issues.slice().sort(function(a, b) {
+      return (b.impact || 0) - (a.impact || 0);
+    });
+
+    for (var i = 0; i < sortedIssues.length; i++) {
+      var iss = sortedIssues[i];
       var row = document.createElement("div");
       row.className = "sgo-tt-iss";
+      var impBadge = iss.impact
+        ? '<span class="sgo-tt-impact sgo-tt-impact--' + this._impactLvl(iss.impact) + '">P' + iss.impact + '</span>'
+        : '';
       row.innerHTML =
         '<span class="sgo-tt-dot sgo-tt-dot--' + iss.severity + '"></span>' +
+        impBadge +
         '<span class="sgo-tt-msg">' + this._esc(iss.message) + '</span>';
       tt.appendChild(row);
 
       if (iss.fix) {
         var fix = document.createElement("div");
         fix.className = "sgo-tt-fix";
-        fix.textContent = iss.fix;
+        fix.textContent = "\u2192 " + iss.fix;
         tt.appendChild(fix);
+      }
+
+      if (iss.research_cite) {
+        var cite = document.createElement("div");
+        cite.className = "sgo-tt-cite";
+        cite.textContent = "\u2197 " + iss.research_cite;
+        tt.appendChild(cite);
       }
     }
 
@@ -453,15 +594,24 @@ class OverlayManager {
       tt.appendChild(met);
     }
 
-    // AI suggestion
+    // GEO Optimization Tip (deterministic — uses suggestion templates)
     if (ann.suggestion) {
       var ai = document.createElement("div");
       ai.className = "sgo-tt-ai";
-      ai.innerHTML =
-        '<div class="sgo-tt-ai-hdr">AI Suggestion</div>' +
-        (ann.suggestion.reason ? '<div class="sgo-tt-ai-reason">' + this._esc(ann.suggestion.reason) + '</div>' : '') +
-        (ann.suggestion.original ? '<div class="sgo-tt-ai-orig">' + this._esc(this._trunc(ann.suggestion.original, 120)) + '</div>' : '') +
-        (ann.suggestion.suggested ? '<div class="sgo-tt-ai-new">' + this._esc(this._trunc(ann.suggestion.suggested, 120)) + '</div>' : '');
+      var tipHtml = '<div class="sgo-tt-ai-hdr">\u26A1 Optimization Tip</div>';
+      if (ann.suggestion.message) {
+        tipHtml += '<div class="sgo-tt-ai-reason">' + this._esc(ann.suggestion.message) + '</div>';
+      }
+      if (ann.suggestion.fix) {
+        tipHtml += '<div class="sgo-tt-ai-fix">\u2192 ' + this._esc(ann.suggestion.fix) + '</div>';
+      }
+      if (ann.suggestion.quote) {
+        tipHtml += '<div class="sgo-tt-ai-orig">\u201C' + this._esc(this._trunc(ann.suggestion.quote, 120)) + '\u201D</div>';
+      }
+      if (ann.suggestion.research_cite) {
+        tipHtml += '<div class="sgo-tt-ai-cite">\u2197 ' + this._esc(ann.suggestion.research_cite) + '</div>';
+      }
+      ai.innerHTML = tipHtml;
       tt.appendChild(ai);
     }
 
@@ -469,7 +619,7 @@ class OverlayManager {
     if (ann.issues.length === 0 && !ann.suggestion) {
       var ok = document.createElement("div");
       ok.className = "sgo-tt-ok";
-      ok.textContent = "Looks good!";
+      ok.textContent = "\u2713 Looks good!";
       tt.appendChild(ok);
     }
 
@@ -587,6 +737,12 @@ class OverlayManager {
     if (score >= 80) return "good";
     if (score >= 50) return "ok";
     return "bad";
+  }
+
+  _impactLvl(n) {
+    if (n >= 8) return "high";
+    if (n >= 5) return "med";
+    return "low";
   }
 
   _fmtCat(name) {
@@ -772,6 +928,22 @@ class OverlayManager {
 .sgo-i-badge--warning { background: #f59e0b; color: #1c1917; }\
 .sgo-i-badge--good { background: #22c55e; color: #1c1917; }\
 \
+/* ── Floating Badge (performance / accessibility) ── */\
+.sgo-float-badge { position: fixed; right: 16px; display: flex; align-items: center;\
+  gap: 6px; padding: 6px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;\
+  color: #fff; pointer-events: auto; z-index: 2147483645;\
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4); cursor: default;\
+  transition: opacity 0.2s; }\
+.sgo-float-badge--error { background: #ef4444; }\
+.sgo-float-badge--warning { background: #f59e0b; color: #1c1917; }\
+.sgo-float-badge--info { background: #3b82f6; }\
+.sgo-float-badge--good { background: #22c55e; color: #1c1917; }\
+.sgo-float-badge__label { pointer-events: none; }\
+.sgo-float-badge__dismiss { background: none; border: none; cursor: pointer;\
+  color: inherit; font-size: 14px; line-height: 1; padding: 0 2px;\
+  opacity: 0.7; transition: opacity 0.15s; }\
+.sgo-float-badge__dismiss:hover { opacity: 1; }\
+\
 /* ── Glassmorphism Tooltip ── */\
 .sgo-tt { position: absolute; top: 22px; left: 0; width: 300px;\
   background: rgba(15,23,42,0.94); backdrop-filter: blur(12px);\
@@ -809,6 +981,22 @@ class OverlayManager {
   text-decoration: line-through; margin-bottom: 3px; }\
 .sgo-tt-ai-new { padding: 3px 7px; background: rgba(34,197,94,0.1);\
   border-radius: 4px; color: #86efac; font-size: 11px; font-weight: 600; }\
+.sgo-tt-impact { display: inline-block; padding: 1px 5px; border-radius: 3px;\
+  font-size: 9px; font-weight: 800; letter-spacing: 0.3px; margin-right: 5px;\
+  flex-shrink: 0; }\
+.sgo-tt-impact--high { background: rgba(239,68,68,0.2); color: #fca5a5; }\
+.sgo-tt-impact--med { background: rgba(245,158,11,0.2); color: #fcd34d; }\
+.sgo-tt-impact--low { background: rgba(59,130,246,0.2); color: #93c5fd; }\
+.sgo-tt-cite { font-size: 10px; color: #7c3aed; padding: 2px 0 4px 13px;\
+  font-style: italic; }\
+.sgo-tt-ai-fix { padding: 4px 9px; margin: 3px 0 5px 0;\
+  background: rgba(34,197,94,0.08); border-left: 2px solid #22c55e;\
+  border-radius: 4px; color: #86efac; font-size: 11px; }\
+.sgo-tt-ai-cite { font-size: 10px; color: #7c3aed; padding-top: 3px;\
+  font-style: italic; }\
+.sgo-iss-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }\
+.sgo-iss-fix { font-size: 10px; color: #a78bfa; font-style: italic;\
+  padding-left: 4px; line-height: 1.4; }\
 .sgo-tt-ok { color: #86efac; font-size: 12px; font-weight: 600;\
   padding: 4px 0; }\
 \

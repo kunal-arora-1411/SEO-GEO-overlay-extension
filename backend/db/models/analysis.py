@@ -57,6 +57,9 @@ class Analysis(Base):
         ForeignKey("brand_voices.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Status
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
+
     # Metadata
     content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     processing_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

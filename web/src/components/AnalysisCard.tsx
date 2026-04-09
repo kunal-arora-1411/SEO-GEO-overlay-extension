@@ -60,34 +60,48 @@ export default function AnalysisCard({ analysis }: AnalysisCardProps) {
       />
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-slate-900 group-hover:text-primary-600 transition-colors">
+        <div className="flex items-center gap-3">
+          <h3 className="font-display truncate text-base font-bold text-surface-on group-hover:text-primary-600 transition-colors">
             {truncateUrl(analysis.url)}
           </h3>
           {getStatusBadge(analysis.status)}
         </div>
-        <p className="mt-1 text-xs text-slate-500">
-          Keyword: <span className="font-medium text-slate-700">{analysis.keyword}</span>
+        <p className="mt-1.5 text-sm text-surface-on-variant">
+          Keyword: <span className="font-semibold text-surface-on">{analysis.keyword}</span>
         </p>
-        <div className="mt-2 flex items-center gap-4 text-xs text-slate-500">
-          <span>SEO: {analysis.seo_score}</span>
-          <span>GEO: {analysis.geo_score}</span>
-          <span>{analysis.recommendations_count} recommendations</span>
-          <span>{formatDate(analysis.created_at)}</span>
+        <div className="mt-3 flex items-center gap-5 text-sm font-medium text-surface-on-variant/80">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-primary-500" />
+            SEO: {analysis.seo_score}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-secondary-500" />
+            GEO: {analysis.geo_score}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-tertiary-500" />
+            {analysis.recommendations_count} recs
+          </span>
+          <span className="ml-auto flex items-center gap-1 opacity-70">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            {formatDate(analysis.created_at)}
+          </span>
         </div>
       </div>
 
-      <svg
-        className="h-5 w-5 flex-shrink-0 text-slate-300 transition-colors group-hover:text-primary-400"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="9 18 15 12 9 6" />
-      </svg>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-container-high text-surface-on-variant opacity-0 transition-all group-hover:opacity-100 group-hover:bg-primary-500 group-hover:text-white shadow-sm">
+        <svg
+          className="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </div>
     </Link>
   );
 }

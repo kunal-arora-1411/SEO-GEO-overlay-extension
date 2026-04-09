@@ -9,8 +9,9 @@ class Settings(BaseSettings):
     gemini_model_analysis: str = "gemini-2.0-flash"
     gemini_model_rewrite: str = "gemini-2.0-flash"
     llm_temperature: float = 0.3
-    llm_max_tokens_analysis: int = 2000
+    llm_max_tokens_analysis: int = 500  # reduced: intent + keyword return tiny JSON
     llm_max_tokens_rewrite: int = 1000
+    llm_enrichment_only: bool = True  # rollback safety: True = /enrich only, no GEO/rewrite LLM calls
     redis_url: str = "redis://localhost:6379"
     cache_ttl_seconds: int = 86400
     max_requests_per_minute: int = 10

@@ -5,6 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import Settings
 from services.cache_service import CacheService
+from analyses.router import router as analyses_router
+from audits.router import router as audits_router
+from settings.router import router as settings_router
 from api.routes import router
 from auth.router import router as auth_router
 from auth.google import router as google_auth_router
@@ -53,6 +56,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(analyses_router, prefix="/api/v1")
+app.include_router(audits_router, prefix="/api/v1")
 app.include_router(router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(google_auth_router, prefix="/api/v1")
@@ -65,6 +70,7 @@ app.include_router(teams_router, prefix="/api/v1")
 app.include_router(competitors_router, prefix="/api/v1")
 app.include_router(brand_voice_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
+app.include_router(settings_router, prefix="/api/v1")
 
 
 @app.get("/health")

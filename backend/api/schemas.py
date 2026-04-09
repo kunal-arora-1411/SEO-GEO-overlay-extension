@@ -131,3 +131,42 @@ class AnalyzeResponse(BaseModel):
     intent: str
     primary_keyword: Optional[str] = None
     processing_time_ms: int
+
+
+# --- Enrich endpoint (lightweight — intent + keywords only) ---
+
+class EnrichRequest(BaseModel):
+    model_config = {"extra": "ignore"}
+
+    url: str
+    title: Optional[str] = None
+    h1: Optional[str] = None
+    h2s: list[str] = Field(default_factory=list)
+    content_excerpt: str = Field(default="", max_length=5000)
+    word_count: int = 0
+
+    # GEO issue codes detected by the client-side scorer
+    geo_issues: list[str] = Field(default_factory=list)
+
+    # Optional LLM feature flags — only run what the client needs
+    include_faq: bool = False
+    include_meta_suggestion: bool = False
+    include_answerability: bool = False
+    include_summary: bool = False
+    include_heading_optimization: bool = False
+
+
+class EnrichResponse(BaseModel):
+    intent: str
+    primary_keyword: Optional[str] = None
+    lsi_keywords: list[str] = Field(default_factory=list)
+    keyword_density: float = 0.0
+    processing_time_ms: int
+
+    # Optional LLM-generated enrichments
+    faq_suggestions: Optional[list[dict]] = None
+    meta_description_suggestion: Optional[str] = None
+    answerability_score: Optional[int] = None
+    answerability_gaps: Optional[list[str]] = None
+    summary_points: Optional[list[str]] = None
+    heading_suggestions: Optional[dict] = None

@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    display_name: Optional[str] = Field(default=None, max_length=100)
+    full_name: Optional[str] = Field(default=None, max_length=100)
 
 
 class LoginRequest(BaseModel):
@@ -24,8 +24,9 @@ class TokenResponse(BaseModel):
 class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
-    display_name: Optional[str] = None
+    full_name: Optional[str] = None
     tier: str
+    analyses_remaining: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}

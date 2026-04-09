@@ -12,6 +12,7 @@
   var extractor = new SmartExtractor(domExtractor, adapterRegistry);
   var readabilityScorer = new ReadabilityScorer();
   var seoScorer = new ClientSEOScorer();
+  var geoScorer = new ClientGEOScorer();
   var overlayManager = null;
   var lastAnalysis = null;
   var isAnalyzing = false;
@@ -85,11 +86,11 @@
    * Run the full analysis pipeline:
    *  1. Extract DOM data
    *  2. Calculate readability metrics
-   *  3. Score SEO client-side
-   *  4. Send results to service worker immediately
-   *  5. Request backend GEO scoring (async)
-   *  6. Merge results when backend responds
-   *  7. Show overlays
+   *  3. Score SEO client-side (instant)
+   *  4. Score GEO client-side (instant)
+   *  5. Show overlays immediately with full SEO + GEO results
+   *  6. Broadcast scores to popup (no "pending" state)
+   *  7. Request keyword enrichment from backend (optional, fire-and-forget)
    */
   async function runAnalysis() {
     if (isAnalyzing) {
@@ -102,7 +103,7 @@
     isAnalyzing = true;
 
     try {
-      // Step 1: Extract DOM data (SmartExtractor returns a Promise)
+      // Step 1: Extract DOM data
       var pageData = await extractor.extract();
 
       // Step 2: Readability analysis
@@ -110,107 +111,48 @@
         pageData.content.full_text
       );
 
-      // Step 3: Client-side SEO scoring
+      // Step 3: Client-side SEO scoring (instant, no network)
       var seoResult = seoScorer.score(pageData, readability);
 
-      // Build initial analysis object
+      // Step 4: Client-side GEO scoring (instant, no network)
+      var geoResult = geoScorer.score(pageData, readability);
+
+      // Build full analysis object immediately — both SEO and GEO are available
       var analysis = {
         url: pageData.url,
         domain: pageData.domain,
         timestamp: pageData.timestamp,
         seo: seoResult,
-        geo: null,
+        geo: {
+          normalized_score: geoResult.normalized_score,
+          categories: geoResult.categories,
+          issues: geoResult.issues
+        },
         combined: null,
         readability: readability,
         page_data: pageData,
         suggestions: []
       };
 
-      // Calculate initial combined score (SEO only until GEO arrives)
+      // Calculate combined score — both SEO and GEO are instantly available
       analysis.combined = calculateCombinedScore(
         seoResult.normalized_score,
-        null
+        geoResult.normalized_score
       );
 
       // Store as last analysis
       lastAnalysis = analysis;
 
-      // Step 4: Show overlays immediately with SEO-only results
+      // Step 5: Show overlays immediately with full data — no re-render needed
       showOverlays(analysis);
 
-      // Step 5: Send to service worker for backend GEO scoring (fire and forget)
-      try {
-        chrome.runtime.sendMessage(
-          {
-            type: MSG.ANALYZE_PAGE,
-            data: {
-              url: pageData.url,
-              meta: pageData.meta || {},
-              headings: pageData.headings || {},
-              content: {
-                full_text: ((pageData.content && pageData.content.full_text) || "").substring(0, 50000),
-                word_count: (pageData.content && pageData.content.word_count) || 0,
-                paragraph_count: (pageData.content && pageData.content.paragraph_count) || 0,
-                sentence_count: (pageData.content && pageData.content.sentence_count) || 0
-              },
-              structured_data: pageData.structured_data || {},
-              links: {
-                internal_count: (pageData.links && pageData.links.internal_count) || 0,
-                external_count: (pageData.links && pageData.links.external_count) || 0
-              },
-              readability: readability || {}
-            }
-          },
-          function (response) {
-            if (chrome.runtime.lastError) {
-              // Service worker may not be ready — ignore
-              return;
-            }
-            if (response && typeof response.geo_score === "number") {
-              // Merge GEO results from backend
-              lastAnalysis.geo = {
-                normalized_score: response.geo_score,
-                categories: response.geo_categories || {},
-                issues: response.geo_issues || []
-              };
-              lastAnalysis.suggestions = response.suggestions || [];
-              lastAnalysis.combined = calculateCombinedScore(
-                seoResult.normalized_score,
-                response.geo_score
-              );
-              // Re-render overlays with full data
-              showOverlays(lastAnalysis);
-
-              // Broadcast updated scores with GEO data to popup
-              try {
-                chrome.runtime.sendMessage({
-                  type: "SCORES_READY",
-                  data: {
-                    seo_score: seoResult.normalized_score,
-                    geo_score: response.geo_score,
-                    combined_score: lastAnalysis.combined,
-                    issues: (seoResult.issues || []).concat(response.geo_issues || []),
-                    suggestions: response.suggestions || []
-                  }
-                });
-              } catch (e) {
-                // Ignore
-              }
-            }
-          }
-        );
-      } catch (e) {
-        // Service worker communication failed — continue with SEO-only results
-      }
-
-      // Step 6: Broadcast scores to service worker for popup access
+      // Step 6: Broadcast full scores to service worker for popup access
       var scoresData = {
         seo_score: seoResult.normalized_score,
-        geo_score: null,
+        geo_score: geoResult.normalized_score,
         combined_score: analysis.combined,
-        issues: seoResult.issues || [],
-        suggestions: [],
-        page_data: pageData
+        issues: (seoResult.issues || []).concat(geoResult.issues || []),
+        suggestions: geoResult.issues || []   // GEO issues are the optimization suggestions
       };
       try {
         chrome.runtime.sendMessage({
@@ -218,7 +160,77 @@
           data: scoresData
         });
       } catch (e) {
-        // Ignore
+        // Ignore — popup may not be open
+      }
+
+      // Step 7: Optional backend enrichment (keyword/intent + LLM features) — fire and forget
+      // Sends only minimal data, enriches keyword-aware SEO checks and optional LLM features
+      try {
+        var h1Text = pageData.headings && pageData.headings.h1 && pageData.headings.h1.length > 0
+          ? pageData.headings.h1[0].text : "";
+        var h2Texts = (pageData.headings && pageData.headings.h2 || []).map(function (h) { return h.text; });
+        var contentExcerpt = ((pageData.content && pageData.content.full_text) || "").substring(0, 1200);
+
+        // Collect GEO issue codes to tell backend which optional LLM features are needed
+        var geoIssueCodes = (geoResult.issues || []).map(function (i) { return i.code; });
+        var wantsFaq = geoIssueCodes.indexOf("no_faq_section") !== -1;
+        var wantsMeta = (seoResult.issues || []).some(function (i) {
+          return i.element === "meta_description" || i.code === "meta_missing" || i.code === "meta_too_short";
+        });
+        var wantsAnswerability = geoResult.normalized_score < 60;
+        var wantsSummary = geoIssueCodes.indexOf("no_direct_opening") !== -1 || geoResult.normalized_score < 50;
+        var wantsHeadings = geoIssueCodes.indexOf("heading_generic") !== -1 ||
+          geoIssueCodes.indexOf("heading_not_question") !== -1;
+
+        chrome.runtime.sendMessage(
+          {
+            type: MSG.ENRICH_PAGE,
+            data: {
+              url: pageData.url,
+              title: (pageData.meta && pageData.meta.title) || "",
+              h1: h1Text,
+              h2s: h2Texts.slice(0, 10),
+              content_excerpt: contentExcerpt,
+              word_count: (pageData.content && pageData.content.word_count) || 0,
+              geo_issues: geoIssueCodes,
+              include_faq: wantsFaq,
+              include_meta_suggestion: wantsMeta,
+              include_answerability: wantsAnswerability,
+              include_summary: wantsSummary,
+              include_heading_optimization: wantsHeadings
+            }
+          },
+          function (response) {
+            if (chrome.runtime.lastError || !response || response.error) {
+              // Backend unavailable — extension already has full results, ignore
+              return;
+            }
+            // Enrichment adds keyword context and LLM suggestions — store and notify popup
+            lastAnalysis.enrichment = {
+              intent: response.intent,
+              primary_keyword: response.primary_keyword,
+              lsi_keywords: response.lsi_keywords || [],
+              keyword_density: response.keyword_density || 0,
+              faq_suggestions: response.faq_suggestions || null,
+              meta_description_suggestion: response.meta_description_suggestion || null,
+              answerability_score: response.answerability_score != null ? response.answerability_score : null,
+              answerability_gaps: response.answerability_gaps || null,
+              summary_points: response.summary_points || null,
+              heading_suggestions: response.heading_suggestions || null
+            };
+            // Notify popup that enrichment is available so it can update display
+            try {
+              chrome.runtime.sendMessage({
+                type: "ENRICHMENT_READY",
+                data: lastAnalysis.enrichment
+              });
+            } catch (e) {
+              // Popup not open — ignore
+            }
+          }
+        );
+      } catch (e) {
+        // Backend unavailable — extension works fully offline
       }
 
       isAnalyzing = false;
@@ -362,15 +374,15 @@
       lines.push("");
     }
 
-    // AI Suggestions
-    if (analysis.suggestions && analysis.suggestions.length > 0) {
+    // GEO Issues as Optimization Suggestions
+    var geoIssues = analysis.geo ? (analysis.geo.issues || []) : [];
+    if (geoIssues.length > 0) {
       lines.push(
-        "--- AI Suggestions (" + analysis.suggestions.length + ") ---"
+        "--- Optimization Suggestions (" + geoIssues.length + ") ---"
       );
-      analysis.suggestions.forEach(function (s, idx) {
-        lines.push((idx + 1) + ". " + (s.reason || "Suggestion"));
-        if (s.original) lines.push("   Original: " + s.original);
-        if (s.suggested) lines.push("   Suggested: " + s.suggested);
+      geoIssues.forEach(function (issue, idx) {
+        var prefix = "[" + (issue.type || "info").toUpperCase() + "] (Impact: " + (issue.impact || 0) + "/10)";
+        lines.push((idx + 1) + ". " + prefix + " " + (issue.message || ""));
         lines.push("");
       });
     }

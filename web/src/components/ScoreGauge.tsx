@@ -11,10 +11,10 @@ interface ScoreGaugeProps {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return "#22c55e";
-  if (score >= 60) return "#eab308";
-  if (score >= 40) return "#f97316";
-  return "#ef4444";
+  if (score >= 80) return "#006c63"; // tertiary-500
+  if (score >= 60) return "#712ae2"; // secondary-600
+  if (score >= 40) return "#f59e0b"; // amber-500
+  return "#ef4444"; // red-500
 }
 
 function getScoreLabel(score: number): string {
@@ -27,7 +27,7 @@ function getScoreLabel(score: number): string {
 export default function ScoreGauge({
   score,
   size = 120,
-  strokeWidth = 8,
+  strokeWidth = 6,
   label,
   animated = true,
 }: ScoreGaugeProps) {
@@ -36,6 +36,7 @@ export default function ScoreGauge({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (displayScore / 100) * circumference;
   const color = getScoreColor(score);
+  const gradientId = `gauge-gradient-${color.replace("#", "")}`;
 
   useEffect(() => {
     if (!animated) {
@@ -61,13 +62,20 @@ export default function ScoreGauge({
   return (
     <div className="relative inline-flex flex-col items-center">
       <svg width={size} height={size} className="-rotate-90">
+        <defs>
+          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor={color} />
+            <stop offset="100%" stopColor={color} stopOpacity="0.4" />
+          </linearGradient>
+        </defs>
         {/* Background circle */}
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#e2e8f0"
+          stroke="currentColor"
+          className="text-surface-container-high"
           strokeWidth={strokeWidth}
         />
         {/* Score arc */}
@@ -76,31 +84,31 @@ export default function ScoreGauge({
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke={color}
+          stroke={`url(#${gradientId})`}
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="transition-all duration-300"
+          className="transition-all duration-300 drop-shadow-sm"
         />
       </svg>
       {/* Center text */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span
-          className="text-2xl font-bold"
+          className="font-display font-bold"
           style={{ color, fontSize: size * 0.22 }}
         >
           {displayScore}
         </span>
         <span
-          className="text-xs text-slate-500"
-          style={{ fontSize: size * 0.09 }}
+          className="text-surface-on-variant"
+          style={{ fontSize: size * 0.08 }}
         >
           {getScoreLabel(score)}
         </span>
       </div>
       {label && (
-        <span className="mt-2 text-xs font-medium text-slate-600">{label}</span>
+        <span className="mt-3 font-display text-[13px] font-bold text-surface-on">{label}</span>
       )}
     </div>
   );

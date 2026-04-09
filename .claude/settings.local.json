@@ -1,0 +1,11 @@
+{
+  "env": {
+    "SLASH_COMMAND_TOOL_CHAR_BUDGET": "300000"
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:medium.com)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

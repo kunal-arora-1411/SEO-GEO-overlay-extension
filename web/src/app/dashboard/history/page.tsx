@@ -4,86 +4,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, type Analysis } from "@/lib/api";
 import ScoreGauge from "@/components/ScoreGauge";
 
-const demoAnalyses: Analysis[] = [
-  {
-    id: "1",
-    url: "https://example.com/blog/ai-search-optimization",
-    keyword: "AI search optimization",
-    seo_score: 82,
-    geo_score: 68,
-    overall_score: 75,
-    status: "completed",
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-    recommendations_count: 12,
-  },
-  {
-    id: "2",
-    url: "https://example.com/guides/seo-best-practices-2025",
-    keyword: "SEO best practices",
-    seo_score: 91,
-    geo_score: 55,
-    overall_score: 73,
-    status: "completed",
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-    recommendations_count: 8,
-  },
-  {
-    id: "3",
-    url: "https://example.com/articles/content-marketing-strategy",
-    keyword: "content marketing strategy",
-    seo_score: 76,
-    geo_score: 71,
-    overall_score: 74,
-    status: "completed",
-    created_at: new Date(Date.now() - 259200000).toISOString(),
-    recommendations_count: 15,
-  },
-  {
-    id: "4",
-    url: "https://example.com/blog/structured-data-guide",
-    keyword: "structured data SEO",
-    seo_score: 88,
-    geo_score: 79,
-    overall_score: 84,
-    status: "completed",
-    created_at: new Date(Date.now() - 345600000).toISOString(),
-    recommendations_count: 6,
-  },
-  {
-    id: "5",
-    url: "https://example.com/blog/technical-seo-checklist",
-    keyword: "technical SEO checklist",
-    seo_score: 94,
-    geo_score: 62,
-    overall_score: 78,
-    status: "completed",
-    created_at: new Date(Date.now() - 432000000).toISOString(),
-    recommendations_count: 4,
-  },
-  {
-    id: "6",
-    url: "https://example.com/blog/link-building-strategies",
-    keyword: "link building strategies",
-    seo_score: 67,
-    geo_score: 58,
-    overall_score: 63,
-    status: "completed",
-    created_at: new Date(Date.now() - 518400000).toISOString(),
-    recommendations_count: 18,
-  },
-  {
-    id: "7",
-    url: "https://example.com/blog/keyword-research",
-    keyword: "keyword research guide",
-    seo_score: 85,
-    geo_score: 74,
-    overall_score: 80,
-    status: "completed",
-    created_at: new Date(Date.now() - 604800000).toISOString(),
-    recommendations_count: 9,
-  },
-];
-
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString("en-US", {
@@ -113,8 +33,9 @@ function getStatusBadge(status: Analysis["status"]) {
 }
 
 export default function HistoryPage() {
-  const [analyses, setAnalyses] = useState<Analysis[]>(demoAnalyses);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -127,14 +48,15 @@ export default function HistoryPage() {
 
   useEffect(() => {
     async function fetchAnalyses() {
+      setIsLoading(true);
+      setFetchError(null);
       try {
         const result = await api.getAnalyses(page, 10);
-        if (result.items.length > 0) {
-          setAnalyses(result.items);
-          setTotalPages(result.pages);
-        }
-      } catch {
-        // Use demo data
+        setAnalyses(result.items);
+        setTotalPages(result.pages);
+      } catch (err: unknown) {
+        const detail = (err as { detail?: string })?.detail;
+        setFetchError(detail || "Failed to load analyses. Please try again.");
       } finally {
         setIsLoading(false);
       }
@@ -239,6 +161,13 @@ export default function HistoryPage() {
         </div>
       )}
 
+      {/* Error banner */}
+      {fetchError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {fetchError}
+        </div>
+      )}
+
       {/* Table */}
       <div className="card overflow-hidden p-0">
         <div className="overflow-x-auto">
@@ -269,8 +198,8 @@ export default function HistoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {isLoading
-                ? Array.from({ length: 5 }).map((_, i) => (
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
                       <td className="px-6 py-4">
                         <div className="h-4 w-48 rounded bg-slate-200" />
@@ -295,7 +224,14 @@ export default function HistoryPage() {
                       </td>
                     </tr>
                   ))
-                : analyses.map((analysis) => (
+              ) : analyses.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-500">
+                    No analyses yet. Start your first analysis above.
+                  </td>
+                </tr>
+              ) : (
+                analyses.map((analysis) => (
                     <tr
                       key={analysis.id}
                       className="transition-colors hover:bg-slate-50/50"
@@ -336,7 +272,8 @@ export default function HistoryPage() {
                         {formatDate(analysis.created_at)}
                       </td>
                     </tr>
-                  ))}
+                  ))
+              )}
             </tbody>
           </table>
         </div>

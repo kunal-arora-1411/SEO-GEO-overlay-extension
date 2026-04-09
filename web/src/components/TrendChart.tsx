@@ -13,7 +13,7 @@ export default function TrendChart({
   data,
   width = 200,
   height = 60,
-  color = "#7c3aed",
+  color = "#006c63", // tertiary-500 default
   showDots = false,
   labels,
 }: TrendChartProps) {
@@ -41,48 +41,49 @@ export default function TrendChart({
   const areaD = `${pathD} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`;
 
   const trend = data[data.length - 1] - data[0];
-  const trendColor = trend >= 0 ? "#22c55e" : "#ef4444";
+  const trendColor = trend >= 0 ? "#006c63" : "#ef4444";
 
   return (
-    <div className="inline-flex flex-col items-center">
+    <div className="inline-flex flex-col items-stretch">
       <svg width={width} height={height} className="overflow-visible">
         <defs>
-          <linearGradient id={`gradient-${color}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={color} stopOpacity="0.2" />
+          <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={color} stopOpacity="0.4" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
         </defs>
         {/* Area fill */}
-        <path d={areaD} fill={`url(#gradient-${color})`} />
+        <path d={areaD} fill={`url(#gradient-${color.replace('#', '')})`} />
         {/* Line */}
         <path
           d={pathD}
           fill="none"
           stroke={color}
-          strokeWidth={2}
+          strokeWidth={2.5}
           strokeLinecap="round"
           strokeLinejoin="round"
+          className="drop-shadow-sm"
         />
         {/* Dots */}
         {showDots &&
           points.map((p, i) => (
-            <circle key={i} cx={p.x} cy={p.y} r={3} fill={color} />
+            <circle key={i} cx={p.x} cy={p.y} r={3} fill={color} className="drop-shadow-sm" />
           ))}
       </svg>
       {labels && (
         <div
-          className="flex justify-between w-full mt-1"
+          className="flex justify-between w-full mt-2"
           style={{ width }}
         >
           {labels.map((label, i) => (
-            <span key={i} className="text-[10px] text-slate-400">
+            <span key={i} className="text-[10px] font-medium text-surface-on-variant">
               {label}
             </span>
           ))}
         </div>
       )}
       {trend !== 0 && (
-        <span className="text-xs font-medium mt-1" style={{ color: trendColor }}>
+        <span className="font-display text-[13px] font-bold mt-1 text-right" style={{ color: trendColor }}>
           {trend > 0 ? "+" : ""}
           {trend.toFixed(1)}
         </span>

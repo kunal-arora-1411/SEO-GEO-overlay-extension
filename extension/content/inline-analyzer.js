@@ -7,6 +7,41 @@
 class InlineAnalyzer {
   constructor() {
     this._maxAnnotations = 60;
+    this._dismissedIds = {};
+    this._domainKey = "";
+  }
+
+  /**
+   * Load dismissed annotation state from chrome.storage.local.
+   * Call this before analyze() to restore prior dismissals for this domain.
+   * @param {string} domain — e.g. "example.com"
+   * @param {Function} [callback] — called when state is loaded
+   */
+  loadDismissedState(domain, callback) {
+    this._domainKey = "dismissed_" + (domain || "").replace(/[^a-z0-9]/gi, "_");
+    try {
+      chrome.storage.local.get([this._domainKey], function (data) {
+        this._dismissedIds = (data && data[this._domainKey]) || {};
+        if (callback) callback();
+      }.bind(this));
+    } catch (e) {
+      // chrome.storage not available (e.g. unit tests)
+      if (callback) callback();
+    }
+  }
+
+  /**
+   * Mark an annotation as dismissed and persist to chrome.storage.local.
+   * @param {string} annotationId — the annotation's id field
+   */
+  markDismissed(annotationId) {
+    this._dismissedIds[annotationId] = true;
+    if (!this._domainKey) return;
+    try {
+      var obj = {};
+      obj[this._domainKey] = this._dismissedIds;
+      chrome.storage.local.set(obj);
+    } catch (e) { /* ignore */ }
   }
 
   /**
@@ -14,10 +49,10 @@ class InlineAnalyzer {
    * @param {Object} pageData  — DOMExtractor.extract() output
    * @param {Object} seoResult — ClientSEOScorer.score() output
    * @param {Object} readability — ReadabilityScorer.analyze() output
-   * @param {Array}  suggestions — Backend AI suggestions (optional)
+   * @param {Object} geoResult — ClientGEOScorer.score() output (optional)
    * @returns {Object} { annotations, metaBar, structuralInserts, stats }
    */
-  analyze(pageData, seoResult, readability, suggestions) {
+  analyze(pageData, seoResult, readability, geoResult) {
     var annotations = [];
 
     // Per-element analysis
@@ -25,16 +60,45 @@ class InlineAnalyzer {
     annotations = annotations.concat(this._analyzeParagraphs(pageData.content));
     annotations = annotations.concat(this._analyzeLinks(pageData.links));
     annotations = annotations.concat(this._analyzeImages(pageData.images));
+    annotations = annotations.concat(this._analyzePerformance(pageData.images));
+    annotations = annotations.concat(this._analyzeAccessibility());
 
-    // Merge backend AI suggestions
-    if (suggestions && suggestions.length > 0) {
-      this._mergeBackendSuggestions(annotations, suggestions);
+    // Generate deterministic GEO suggestions from client-side scoring
+    if (geoResult && geoResult.issues && geoResult.issues.length > 0) {
+      this._generateGEOSuggestions(annotations, geoResult, pageData);
     }
 
-    // Sort: errors first, then warnings, then info, then good
+    // Apply persisted dismissed state — restore dismissals from chrome.storage
+    for (var di = 0; di < annotations.length; di++) {
+      if (this._dismissedIds[annotations[di].id]) {
+        annotations[di].dismissed = true;
+      }
+    }
+
+    // Frequency map — count how many annotations share the same issue code
+    var freqMap = {};
+    for (var fi = 0; fi < annotations.length; fi++) {
+      var fIssues = annotations[fi].issues || [];
+      for (var fj = 0; fj < fIssues.length; fj++) {
+        var fc = fIssues[fj].code;
+        if (fc) freqMap[fc] = (freqMap[fc] || 0) + 1;
+      }
+    }
+
+    // Composite priority: severity dominates, then impact, then frequency boost
+    // Lower _priority = shown first
     var severityOrder = { error: 0, warning: 1, info: 2, good: 3 };
+    for (var pi = 0; pi < annotations.length; pi++) {
+      var topIssue = annotations[pi].issues && annotations[pi].issues[0];
+      var sev = severityOrder[annotations[pi].severity] !== undefined
+                ? severityOrder[annotations[pi].severity] : 3;
+      var impact = topIssue ? (topIssue.impact || 0) : 0;
+      var freq = (topIssue && topIssue.code) ? Math.min(freqMap[topIssue.code] || 1, 20) : 1;
+      annotations[pi]._priority = sev * 1000 - impact * 10 - freq;
+    }
+
     annotations.sort(function (a, b) {
-      return (severityOrder[a.severity] || 3) - (severityOrder[b.severity] || 3);
+      return a._priority - b._priority;
     });
 
     // Cap for performance — keep all errors/warnings, trim info/good
@@ -134,8 +198,9 @@ class InlineAnalyzer {
             code: "heading_generic",
             severity: "warning",
             message: "Generic heading. Use a descriptive, keyword-rich heading.",
-            fix: "Replace with a specific, descriptive heading relevant to the content.",
-            impact: 6
+            fix: "Example: 'Benefits' \u2192 'What Are the Top 5 Benefits of [Topic]?'",
+            impact: 6,
+            research_cite: "Princeton GEO 2024"
           });
         }
 
@@ -173,9 +238,10 @@ class InlineAnalyzer {
           issues.push({
             code: "heading_not_question",
             severity: "info",
-            message: "Not phrased as a question. Question headings improve AI snippet eligibility.",
-            fix: "Try rephrasing as: \"What is " + text.toLowerCase().replace(/[?.]$/, "") + "?\"",
-            impact: 3
+            message: "Statement heading \u2014 question format gets 2.8\u00D7 more AI snippets.",
+            fix: null,
+            impact: 3,
+            research_cite: "Princeton GEO 2024"
           });
         }
 
@@ -188,6 +254,7 @@ class InlineAnalyzer {
           tagName: level,
           severity: severity,
           issues: issues,
+          elementText: text,
           metrics: {
             chars: charCount,
             words: text.split(/\s+/).filter(Boolean).length,
@@ -265,8 +332,24 @@ class InlineAnalyzer {
             code: "paragraph_hard_to_read",
             severity: "info",
             message: "Hard to read (Flesch: " + fre + "). Consider simplifying.",
-            fix: null,
+            fix: "Shorten sentences to under 20 words. Replace multi-syllable words with simpler synonyms.",
             impact: 4
+          });
+        }
+      }
+
+      // Claim without verifiable data (GEO precision check)
+      if (wordCount >= 50) {
+        var claimPattern = /\b(increases?|improves?|reduces?|boosts?|decreases?|shows?|reveals?|demonstrates?|proves?|indicates?|suggests?|leads? to|results? in|causes?|helps?|prevents?|enables?)\b/i;
+        var dataPattern = /\d+%|\$[\d,.]+|\d{4}|according to|study|research|survey|report|found that|data shows?/i;
+        if (claimPattern.test(text) && !dataPattern.test(text)) {
+          issues.push({
+            code: "paragraph_claim_without_data",
+            severity: "info",
+            message: "Makes factual claims without supporting data or citations.",
+            fix: "Add a statistic or named source: '[claim], according to [Source] ([Year]).'",
+            impact: 6,
+            research_cite: "Princeton GEO 2024 \u2014 unsubstantiated claims get skipped by AI"
           });
         }
       }
@@ -283,6 +366,7 @@ class InlineAnalyzer {
         tagName: "p",
         severity: severity,
         issues: issues,
+        elementText: text.substring(0, 60),
         metrics: {
           words: wordCount,
           sentences: sentenceCount
@@ -363,6 +447,7 @@ class InlineAnalyzer {
         tagName: "a",
         severity: this._worstSeverity(issues),
         issues: issues,
+        elementText: text.length > 0 ? text.substring(0, 60) : (link.href || "").substring(0, 40),
         metrics: {
           href: (link.href || "").substring(0, 60),
           isInternal: isInternal,
@@ -393,7 +478,7 @@ class InlineAnalyzer {
           code: "image_missing_alt",
           severity: "error",
           message: "Image has no alt text. Add descriptive alt text for accessibility and SEO.",
-          fix: "Add alt=\"description of the image\" to this <img> tag.",
+          fix: "Add alt=\"[describe what is shown in the image]\" to this <img>. Be specific: 'alt=\"Red running shoes on white background\"' not 'alt=\"shoe\"'.",
           impact: 8
         });
       } else {
@@ -419,6 +504,18 @@ class InlineAnalyzer {
         }
       }
 
+      // Missing width/height (CLS risk)
+      if (!img.width && !img.height) {
+        issues.push({
+          code: "image_missing_dimensions",
+          severity: "warning",
+          message: "Image missing width and height attributes \u2014 causes layout shift (CLS) as the page loads.",
+          fix: "Add width=\"[px]\" height=\"[px]\" matching the image's natural dimensions. This eliminates layout shift and improves LCP.",
+          impact: 6,
+          research_cite: "Core Web Vitals \u2014 CLS prevention"
+        });
+      }
+
       // Only annotate images with issues
       if (issues.length === 0) continue;
 
@@ -429,6 +526,7 @@ class InlineAnalyzer {
         tagName: "img",
         severity: this._worstSeverity(issues),
         issues: issues,
+        elementText: img.alt || img.src || "",
         metrics: {
           hasAlt: !!(img.alt || img.has_alt),
           altLength: (img.alt || "").length
@@ -439,6 +537,244 @@ class InlineAnalyzer {
     }
 
     return annotations;
+  }
+
+  // ─── PERFORMANCE ─────────────────────────────────────────────
+
+  _analyzePerformance(images) {
+    var annotations = [];
+    var perfCfg = SCORING_CONFIG.performance || {};
+
+    // ── no_lazy_loading_images ──
+    var allImages = images || [];
+    var minImages = perfCfg.lazy_loading_min_images || 3;
+    if (allImages.length >= minImages) {
+      var domImgs = document.querySelectorAll("img");
+      var nonLazy = 0;
+      for (var di = 0; di < domImgs.length; di++) {
+        if (domImgs[di].getAttribute("loading") !== "lazy") nonLazy++;
+      }
+      var pct = domImgs.length > 0 ? nonLazy / domImgs.length : 0;
+      if (pct >= (perfCfg.lazy_loading_threshold_pct || 0.30)) {
+        annotations.push({
+          id: "ann-perf-lazy",
+          selector: null,
+          elementType: "performance",
+          tagName: null,
+          severity: "info",
+          issues: [{
+            code: "no_lazy_loading_images",
+            severity: "info",
+            message: nonLazy + " of " + domImgs.length + " images missing loading=\"lazy\". Below-the-fold images should defer loading to improve LCP.",
+            fix: "Add loading=\"lazy\" to all <img> tags not in the initial viewport. The first 1-2 hero images should NOT have lazy loading.",
+            impact: 5,
+            research_cite: "Core Web Vitals \u2014 LCP optimization"
+          }],
+          elementText: nonLazy + " images",
+          metrics: { nonLazy: nonLazy, total: domImgs.length },
+          suggestion: null,
+          dismissed: false
+        });
+      }
+    }
+
+    // ── no_preload_critical_assets ──
+    var preloads = document.querySelectorAll("link[rel=\"preload\"]");
+    if (preloads.length === 0) {
+      annotations.push({
+        id: "ann-perf-preload",
+        selector: null,
+        elementType: "performance",
+        tagName: null,
+        severity: "info",
+        issues: [{
+          code: "no_preload_critical_assets",
+          severity: "info",
+          message: "No <link rel=\"preload\"> found. Preloading critical assets (hero image, fonts, CSS) eliminates render-blocking delays.",
+          fix: "Add to <head>: <link rel=\"preload\" href=\"/hero.webp\" as=\"image\"> for the LCP image, and <link rel=\"preload\" href=\"/font.woff2\" as=\"font\" crossorigin> for primary fonts.",
+          impact: 4,
+          research_cite: "Core Web Vitals \u2014 LCP & FCP optimization"
+        }],
+        elementText: "No preload hints",
+        metrics: { preloadCount: 0 },
+        suggestion: null,
+        dismissed: false
+      });
+    }
+
+    // ── long_dom_nodes ──
+    var domThreshold = perfCfg.dom_nodes_threshold || 1500;
+    var nodeCount = document.querySelectorAll("*").length;
+    if (nodeCount > domThreshold) {
+      annotations.push({
+        id: "ann-perf-dom",
+        selector: null,
+        elementType: "performance",
+        tagName: null,
+        severity: "warning",
+        issues: [{
+          code: "long_dom_nodes",
+          severity: "warning",
+          message: "DOM has " + nodeCount + " nodes (threshold: " + domThreshold + "). Large DOMs slow rendering and degrade AI crawler parsing efficiency.",
+          fix: "Flatten deeply nested wrappers, remove unused DOM nodes, paginate large lists. Target < " + domThreshold + " total elements.",
+          impact: 6,
+          research_cite: "Google PageSpeed Insights \u2014 Avoid an excessive DOM size"
+        }],
+        elementText: nodeCount + " DOM nodes",
+        metrics: { nodeCount: nodeCount, threshold: domThreshold },
+        suggestion: null,
+        dismissed: false
+      });
+    }
+
+    // ── too_many_requests ──
+    if (window.performance && window.performance.getEntriesByType) {
+      var reqThreshold = perfCfg.request_count_threshold || 100;
+      var reqCount = window.performance.getEntriesByType("resource").length;
+      if (reqCount > reqThreshold) {
+        annotations.push({
+          id: "ann-perf-requests",
+          selector: null,
+          elementType: "performance",
+          tagName: null,
+          severity: "info",
+          issues: [{
+            code: "too_many_requests",
+            severity: "info",
+            message: reqCount + " network requests detected (threshold: " + reqThreshold + "). Excess requests increase Time to Interactive and hurt mobile performance.",
+            fix: "Bundle JS/CSS files, lazy-load third-party scripts, use a CDN, and defer non-critical analytics. Target < " + reqThreshold + " requests.",
+            impact: 5,
+            research_cite: "Core Web Vitals \u2014 Time to Interactive"
+          }],
+          elementText: reqCount + " requests",
+          metrics: { requestCount: reqCount, threshold: reqThreshold },
+          suggestion: null,
+          dismissed: false
+        });
+      }
+    }
+
+    return annotations;
+  }
+
+  // ─── ACCESSIBILITY ───────────────────────────────────────────
+
+  _analyzeAccessibility() {
+    var annotations = [];
+
+    // ── missing_aria_labels ──
+    var interactive = document.querySelectorAll(
+      "button, [role=\"button\"], input[type=\"submit\"], input[type=\"button\"], a[role=\"button\"]"
+    );
+    var unlabeled = [];
+    for (var ii = 0; ii < interactive.length; ii++) {
+      var el = interactive[ii];
+      var hasLabel = el.getAttribute("aria-label") ||
+                     el.getAttribute("aria-labelledby") ||
+                     (el.textContent || "").trim().length > 0;
+      if (!hasLabel) {
+        unlabeled.push(el);
+      }
+    }
+    if (unlabeled.length > 0) {
+      var sel = this._getSimpleSelector(unlabeled[0]);
+      annotations.push({
+        id: "ann-a11y-aria",
+        selector: sel,
+        elementType: "accessibility",
+        tagName: unlabeled[0].tagName.toLowerCase(),
+        severity: "warning",
+        issues: [{
+          code: "missing_aria_labels",
+          severity: "warning",
+          message: unlabeled.length + " interactive element" + (unlabeled.length !== 1 ? "s" : "") + " have no accessible label. Screen readers and AI parsers both rely on ARIA labels for context.",
+          fix: "Add aria-label=\"[describe the action]\" to each unlabeled button or interactive element. Example: aria-label=\"Close dialog\" or aria-label=\"Subscribe to newsletter\".",
+          impact: 6,
+          research_cite: "WCAG 2.1 Success Criterion 4.1.2"
+        }],
+        elementText: unlabeled.length + " unlabeled elements",
+        metrics: { unlabeledCount: unlabeled.length },
+        suggestion: null,
+        dismissed: false
+      });
+    }
+
+    // ── missing_form_labels ──
+    var inputs = document.querySelectorAll("input:not([type=\"hidden\"]):not([type=\"submit\"]):not([type=\"button\"]), select, textarea");
+    var unlabeledInputs = [];
+    for (var fi = 0; fi < inputs.length; fi++) {
+      var inp = inputs[fi];
+      var id = inp.getAttribute("id");
+      var hasFormLabel = (id && document.querySelector("label[for=\"" + id + "\"]")) ||
+                         inp.getAttribute("aria-label") ||
+                         inp.getAttribute("aria-labelledby") ||
+                         inp.closest("label");
+      if (!hasFormLabel) unlabeledInputs.push(inp);
+    }
+    if (unlabeledInputs.length > 0) {
+      var inpSel = this._getSimpleSelector(unlabeledInputs[0]);
+      annotations.push({
+        id: "ann-a11y-form",
+        selector: inpSel,
+        elementType: "accessibility",
+        tagName: unlabeledInputs[0].tagName.toLowerCase(),
+        severity: "warning",
+        issues: [{
+          code: "missing_form_labels",
+          severity: "warning",
+          message: unlabeledInputs.length + " form field" + (unlabeledInputs.length !== 1 ? "s" : "") + " have no associated <label>. Required for accessibility compliance and form parsing.",
+          fix: "Wrap each field in <label> or use: <label for=\"fieldId\">Label text</label><input id=\"fieldId\">. Alternatively add aria-label=\"Field description\" directly to the input.",
+          impact: 7,
+          research_cite: "WCAG 2.1 Success Criterion 1.3.1 \u2014 Info and Relationships"
+        }],
+        elementText: unlabeledInputs.length + " unlabeled fields",
+        metrics: { unlabeledCount: unlabeledInputs.length },
+        suggestion: null,
+        dismissed: false
+      });
+    }
+
+    // ── video_without_captions ──
+    var videos = document.querySelectorAll("video");
+    var uncaptioned = [];
+    for (var vi = 0; vi < videos.length; vi++) {
+      var tracks = videos[vi].querySelectorAll("track[kind=\"captions\"], track[kind=\"subtitles\"]");
+      if (tracks.length === 0) uncaptioned.push(videos[vi]);
+    }
+    if (uncaptioned.length > 0) {
+      var vidSel = this._getSimpleSelector(uncaptioned[0]);
+      annotations.push({
+        id: "ann-a11y-video",
+        selector: vidSel,
+        elementType: "accessibility",
+        tagName: "video",
+        severity: "warning",
+        issues: [{
+          code: "video_without_captions",
+          severity: "warning",
+          message: uncaptioned.length + " video element" + (uncaptioned.length !== 1 ? "s" : "") + " have no captions. Required by WCAG 2.1 AA and improves AI content extraction.",
+          fix: "Add <track kind=\"captions\" src=\"captions.vtt\" srclang=\"en\" label=\"English\"> inside each <video>. Generate .vtt files using tools like YouTube auto-captions or rev.com.",
+          impact: 6,
+          research_cite: "WCAG 2.1 Success Criterion 1.2.2 \u2014 Captions (Prerecorded)"
+        }],
+        elementText: uncaptioned.length + " uncaptioned videos",
+        metrics: { uncaptionedCount: uncaptioned.length },
+        suggestion: null,
+        dismissed: false
+      });
+    }
+
+    return annotations;
+  }
+
+  // Helper: simple selector for accessibility annotations (no extractor involvement)
+  _getSimpleSelector(el) {
+    if (!el) return null;
+    if (el.id) return "#" + el.id;
+    var tag = el.tagName.toLowerCase();
+    var cls = el.className && typeof el.className === "string"
+              ? "." + el.className.trim().split(/\s+/)[0] : "";
+    return tag + cls || tag;
   }
 
   // ─── META ───────────────────────────────────────────────────
@@ -549,47 +885,213 @@ class InlineAnalyzer {
       });
     }
 
+    // Suggest TL;DR if no summary/key-takeaways heading
+    var hasSummary = allHeadings.some(function(t) {
+      return /\b(tl;?dr|key takeaways?|summary|quick answer|in brief|overview|highlights?)\b/i.test(t);
+    });
+    if (!hasSummary && content.word_count > 400) {
+      inserts.push({
+        type: "key-takeaways",
+        afterSelector: lastH2Selector,
+        reason: "No Key Takeaways or TL;DR section found. Summary boxes are extracted by Google AIO as quick-answer blocks. Add before the first H2.",
+        severity: "info"
+      });
+    }
+
+    // Suggest conclusion if no conclusion heading
+    var hasConclusion = allHeadings.some(function(t) {
+      return /\b(conclusion|final thoughts?|wrap\s*up|summary|closing|next steps?)\b/i.test(t);
+    });
+    if (!hasConclusion && content.word_count > 500) {
+      inserts.push({
+        type: "conclusion",
+        afterSelector: lastH2Selector,
+        reason: "No conclusion section found. Semantic closure signals complete, authoritative content to AI engines \u2014 restate the primary answer and add a next step.",
+        severity: "info"
+      });
+    }
+
+    // ── no_examples ──
+    var hasExamples = /\bfor example[:\s]|\be\.g\.[,\s]|\bsuch as[:\s]|\bfor instance[:\s]/i.test(fullText);
+    if (!hasExamples && content.word_count > 300) {
+      inserts.push({
+        type: "no_examples",
+        afterSelector: lastH2Selector,
+        reason: "No concrete examples found. Pages with real-world examples are cited 1.9\u00D7 more by AI engines than abstract-only content. Add 'For example:' or 'e.g.' to at least 2 key claims.",
+        severity: "info"
+      });
+    }
+
+    // ── no_pros_cons_sections ──
+    var hasProscons = allHeadings.some(function(t) {
+      return /^(pros?|cons?|advantages?|disadvantages?|drawbacks?|benefits? and drawbacks?|pros? and cons?)\b/i.test(t);
+    });
+    var hasComparisonLanguage = /\bvs\.?\b|\bversus\b|\bcompared? to\b|\bdifference between\b/i.test(fullText);
+    if (!hasProscons && hasComparisonLanguage && content.word_count > 300) {
+      inserts.push({
+        type: "no_pros_cons",
+        afterSelector: lastH2Selector,
+        reason: "Comparison language found but no Pros/Cons section. Structured pros/cons match AI query patterns for 'should I use X' and appear in AI comparison cards.",
+        severity: "info"
+      });
+    }
+
+    // ── no_update_date ── (separate from publish date — checks for dateModified)
+    var jsonLdBlocks = document.querySelectorAll("script[type=\"application/ld+json\"]");
+    var hasDateModified = false;
+    for (var ji = 0; ji < jsonLdBlocks.length; ji++) {
+      try {
+        var ld = JSON.parse(jsonLdBlocks[ji].textContent || "{}");
+        if (ld.dateModified || (ld["@graph"] && ld["@graph"].some(function(n) { return n.dateModified; }))) {
+          hasDateModified = true; break;
+        }
+      } catch (e) { /* ignore malformed JSON-LD */ }
+    }
+    var hasUpdatedText = /\b(last updated|updated on|last modified|updated:)\b/i.test(fullText);
+    if (!hasDateModified && !hasUpdatedText) {
+      inserts.push({
+        type: "no_update_date",
+        afterSelector: lastH2Selector,
+        reason: "No dateModified signal found. 76.4% of ChatGPT top-cited pages were updated within 30 days. Add dateModified to Article JSON-LD and a visible 'Last updated' date to signal freshness.",
+        severity: "info"
+      });
+    }
+
+    // ── multiple_canonical ── (SEO error — check DOM directly)
+    var canonicals = document.querySelectorAll("link[rel=\"canonical\"]");
+    if (canonicals.length > 1) {
+      inserts.push({
+        type: "multiple_canonical",
+        afterSelector: null,
+        reason: "Multiple canonical tags detected (" + canonicals.length + "). Conflicting canonicals cause Google to ignore both. Keep exactly one <link rel=\"canonical\"> in <head>.",
+        severity: "error"
+      });
+    }
+
+    // ── excessive_external_links ──
+    var externalLinks = pageData.links ? (pageData.links.external || []) : [];
+    if (externalLinks.length > 50) {
+      inserts.push({
+        type: "excessive_external_links",
+        afterSelector: null,
+        reason: externalLinks.length + " external links detected. Excess outbound links dilute PageRank and can trigger spam signals. Keep external links under 50 per page and use rel=\"nofollow\" on low-value links.",
+        severity: "warning"
+      });
+    }
+
     return inserts;
   }
 
-  // ─── MERGE BACKEND SUGGESTIONS ─────────────────────────────
+  // ─── GENERATE DETERMINISTIC GEO SUGGESTIONS ───────────────
 
-  _mergeBackendSuggestions(annotations, suggestions) {
-    for (var si = 0; si < suggestions.length; si++) {
-      var sug = suggestions[si];
-      if (!sug.selector) continue;
+  _generateGEOSuggestions(annotations, geoResult, pageData) {
+    if (typeof GEO_SUGGESTION_TEMPLATES === "undefined") return;
 
-      var matched = false;
-      for (var ai = 0; ai < annotations.length; ai++) {
-        if (annotations[ai].selector === sug.selector) {
-          annotations[ai].suggestion = {
-            original: sug.original || "",
-            suggested: sug.suggested || sug.suggestion || "",
-            reason: sug.reason || ""
-          };
-          matched = true;
-          break;
+    var geoIssues = geoResult.issues || [];
+    var content = pageData.content || {};
+    var paragraphs = content.paragraphs || [];
+
+    for (var gi = 0; gi < geoIssues.length; gi++) {
+      var issue = geoIssues[gi];
+      var code = issue.code;
+      if (!code) continue;
+
+      var templateFn = GEO_SUGGESTION_TEMPLATES[code];
+      if (!templateFn) continue;
+
+      // Build context for the template — include real page data for context-aware suggestions
+      var ctx = {
+        quote: null,
+        pageTitle: (pageData.meta && pageData.meta.title) || "",
+        h1Text: (pageData.headings && pageData.headings.h1 && pageData.headings.h1[0])
+                ? (pageData.headings.h1[0].text || "") : "",
+        domain: pageData.domain || "",
+        primaryKeyword: (pageData.enrichment && pageData.enrichment.primary_keyword) || ""
+      };
+
+      // Add context-specific data
+      if (code === "no_direct_opening" && paragraphs.length > 0) {
+        var fp = paragraphs[0];
+        ctx.quote = (fp.text || "").substring(0, 80);
+        ctx.wordCount = fp.word_count || 0;
+      }
+      if (code === "heading_generic" || code === "heading_not_question") {
+        // Find matching annotation to get the heading text
+        for (var ai = 0; ai < annotations.length; ai++) {
+          if (annotations[ai].elementType === "heading") {
+            var annIssues = annotations[ai].issues || [];
+            for (var ii = 0; ii < annIssues.length; ii++) {
+              if (annIssues[ii].code === code) {
+                ctx.quote = (annIssues[ii].message.match(/"([^"]+)"/) || [])[1] || "";
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (code === "stats_without_sources" && paragraphs.length > 0) {
+        // Find a paragraph making claims without data
+        for (var pi = 0; pi < paragraphs.length; pi++) {
+          var pText = paragraphs[pi].text || "";
+          var pWords = paragraphs[pi].word_count || 0;
+          if (pWords > 30 && !/\d+%|\$[\d,.]+|\d{4}|according to/i.test(pText)) {
+            ctx.quote = pText.substring(0, 80);
+            break;
+          }
         }
       }
 
-      // If no existing annotation matched, create one
-      if (!matched) {
-        annotations.push({
-          id: "ann-ai-" + si,
-          selector: sug.selector,
-          elementType: sug.type || "paragraph",
-          tagName: sug.type === "heading" ? "h2" : "p",
-          severity: "info",
-          issues: [],
-          metrics: null,
-          suggestion: {
-            original: sug.original || "",
-            suggested: sug.suggested || sug.suggestion || "",
-            reason: sug.reason || ""
-          },
-          dismissed: false
-        });
+      if (code === "paragraph_claim_without_data" && paragraphs.length > 0) {
+        for (var pi2 = 0; pi2 < paragraphs.length; pi2++) {
+          var pText2 = paragraphs[pi2].text || "";
+          var claimPat = /\b(increases?|improves?|reduces?|boosts?|decreases?|shows?|demonstrates?|proves?|suggests?|leads? to|results? in|causes?|helps?)\b/i;
+          var dataPat = /\d+%|\$[\d,.]+|\d{4}|according to|study|research|survey|report/i;
+          if ((paragraphs[pi2].word_count || 0) >= 50 && claimPat.test(pText2) && !dataPat.test(pText2)) {
+            ctx.quote = pText2.substring(0, 70);
+            break;
+          }
+        }
       }
+
+      var suggestion = templateFn(issue, ctx);
+      if (!suggestion) continue;
+
+      // Enrich the GEO issue itself with the template suggestion for panel display
+      geoIssues[gi].suggestion = suggestion;
+
+      // Attach GEO suggestion to the closest relevant annotation or create new
+      var attached = false;
+
+      // Try to match by element type
+      if (code === "no_direct_opening" && paragraphs.length > 0 && paragraphs[0].selector) {
+        for (var ai = 0; ai < annotations.length; ai++) {
+          if (annotations[ai].selector === paragraphs[0].selector) {
+            annotations[ai].suggestion = suggestion;
+            attached = true;
+            break;
+          }
+        }
+      }
+
+      // For heading-related codes, attach to relevant heading annotations
+      if (!attached && (code === "heading_generic" || code === "heading_not_question")) {
+        for (var ai = 0; ai < annotations.length; ai++) {
+          if (annotations[ai].elementType === "heading") {
+            var annIssues = annotations[ai].issues || [];
+            for (var ii = 0; ii < annIssues.length; ii++) {
+              if (annIssues[ii].code === code && !annotations[ai].suggestion) {
+                annotations[ai].suggestion = suggestion;
+                attached = true;
+                break;
+              }
+            }
+            if (attached) break;
+          }
+        }
+      }
+
+      // Don't create standalone annotations for page-level GEO suggestions
+      // They are shown in the panel's GEO issues list instead
     }
   }
 

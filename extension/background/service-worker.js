@@ -49,7 +49,16 @@ const circuitBreaker = {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
 
-    // Content script (or popup) requests a full backend analysis
+    // Content script requests lightweight keyword/intent enrichment
+    case "ENRICH_PAGE":
+      handleEnrichRequest(message.data)
+        .then((result) => sendResponse(result))
+        .catch((err) =>
+          sendResponse({ error: err.message })
+        );
+      return true; // keep channel open for async response
+
+    // Deprecated: kept for backward compat with older popup/content versions
     case "ANALYZE_PAGE":
       handleAnalyzeRequest(message.data)
         .then((result) => sendResponse(result))
@@ -246,6 +255,89 @@ async function handleAnalyzeRequest(pageData) {
 
   circuitBreaker.recordFailure();
   throw lastError || new Error("Analysis failed after " + RETRY_MAX + " attempts");
+}
+
+// ─── ENRICH REQUEST ──────────────────────────────────────────
+
+async function handleEnrichRequest(pageData) {
+  if (!pageData || !pageData.url) {
+    throw new Error("Missing page data");
+  }
+
+  if (circuitBreaker.isOpen()) {
+    throw new Error("Backend temporarily unavailable (circuit breaker open).");
+  }
+
+  // Enrichment cache (same URL key, shorter TTL — 30 min)
+  const cacheKey = "enrich:" + hashURL(pageData.url);
+  if (analysisCache.has(cacheKey)) {
+    const cached = analysisCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 1800000) {
+      return cached.data;
+    }
+    analysisCache.delete(cacheKey);
+  }
+
+  const headers = await getAuthHeaders();
+
+  let lastError = null;
+  for (let attempt = 0; attempt < RETRY_MAX; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/enrich`, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify(pageData),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (response.status === 429) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || "Rate limit exceeded.");
+      }
+
+      if (response.status === 401) {
+        chrome.storage.local.remove(["auth_token", "auth_user"]);
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`API error ${response.status}${body ? ": " + body.substring(0, 200) : ""}`);
+      }
+
+      const result = await response.json();
+      analysisCache.set(cacheKey, { timestamp: Date.now(), data: result });
+      circuitBreaker.recordSuccess();
+      return result;
+    } catch (error) {
+      clearTimeout(timeout);
+      lastError = error;
+
+      if (error.message && (
+        error.message.includes("429") ||
+        error.message.includes("401") ||
+        error.message.includes("circuit breaker")
+      )) {
+        throw error;
+      }
+
+      if (error.name === "AbortError") {
+        lastError = new Error("Enrichment request timed out");
+      }
+
+      if (attempt < RETRY_MAX - 1) {
+        const delay = RETRY_BASE_DELAY * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  circuitBreaker.recordFailure();
+  throw lastError || new Error("Enrichment failed after " + RETRY_MAX + " attempts");
 }
 
 // ─── BADGE ───────────────────────────────────────────────────

@@ -146,20 +146,24 @@ class ApiClient {
     });
   }
 
+  async getAuditById(id: string) {
+    return this.request<Audit>(`/audits/${id}`);
+  }
+
   // Team endpoints
   async getTeam() {
     return this.request<Team>("/teams/me");
   }
 
   async inviteTeamMember(email: string, role: string) {
-    return this.request<{ message: string }>("/teams/invite", {
+    return this.request<{ message: string }>("/teams/me/invite", {
       method: "POST",
       body: { email, role },
     });
   }
 
-  async removeTeamMember(userId: string) {
-    return this.request<void>(`/teams/members/${userId}`, {
+  async removeTeamMember(memberId: string) {
+    return this.request<void>(`/teams/me/members/${memberId}`, {
       method: "DELETE",
     });
   }
@@ -191,7 +195,7 @@ class ApiClient {
   }
 
   async getBillingInfo() {
-    return this.request<BillingInfo>("/billing");
+    return this.request<BillingInfo>("/billing/status");
   }
 }
 

@@ -5,26 +5,30 @@ import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 export default function SettingsPage() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setIsSaving(true);
     setSaved(false);
+    setSaveError(null);
     try {
       await api.updateSettings({
         full_name: fullName,
         notifications_enabled: notificationsEnabled,
         weekly_reports: weeklyReports,
       });
+      await refreshUser();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch {
-      // Silently fail for demo
+    } catch (err: unknown) {
+      const detail = (err as { detail?: string })?.detail;
+      setSaveError(detail || "Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -137,6 +141,9 @@ export default function SettingsPage() {
       </div>
 
       {/* Actions */}
+      {saveError && (
+        <p className="text-sm text-red-600">{saveError}</p>
+      )}
       <div className="flex items-center justify-between">
         <button
           onClick={handleSave}

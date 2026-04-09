@@ -1,13 +1,15 @@
 // Message types for chrome.runtime.sendMessage / onMessage
 const MSG = {
   // Content Script → Service Worker
-  ANALYZE_PAGE: "ANALYZE_PAGE",
+  ANALYZE_PAGE: "ANALYZE_PAGE",       // deprecated: kept for backward compat
+  ENRICH_PAGE: "ENRICH_PAGE",         // lightweight: intent + keywords only
   GET_CACHED_RESULTS: "GET_CACHED_RESULTS",
 
   // Service Worker → Content Script
   ANALYSIS_COMPLETE: "ANALYSIS_COMPLETE",
   ANALYSIS_ERROR: "ANALYSIS_ERROR",
   SHOW_OVERLAYS: "SHOW_OVERLAYS",
+  ENRICHMENT_READY: "ENRICHMENT_READY",
 
   // Popup → Service Worker
   REQUEST_SCORES: "REQUEST_SCORES",

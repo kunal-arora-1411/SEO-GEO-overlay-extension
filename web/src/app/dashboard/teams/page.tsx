@@ -4,34 +4,15 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { api, type Team, type TeamMember } from "@/lib/api";
 
-const demoTeam: Team = {
-  id: "1",
-  name: "My Team",
-  plan: "Pro",
-  members: [
-    {
-      id: "1",
-      email: "owner@example.com",
-      full_name: "Team Owner",
-      role: "owner",
-      joined_at: new Date(Date.now() - 60 * 86400000).toISOString(),
-    },
-    {
-      id: "2",
-      email: "member@example.com",
-      full_name: "Team Member",
-      role: "member",
-      joined_at: new Date(Date.now() - 14 * 86400000).toISOString(),
-    },
-  ],
-};
-
 export default function TeamsPage() {
   const { user } = useAuth();
-  const [team, setTeam] = useState<Team>(demoTeam);
+  const [team, setTeam] = useState<Team | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchTeam() {
@@ -39,7 +20,9 @@ export default function TeamsPage() {
         const result = await api.getTeam();
         setTeam(result);
       } catch {
-        // Use demo data
+        // leave null — empty state shown
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchTeam();
@@ -48,28 +31,30 @@ export default function TeamsPage() {
   const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
     setIsInviting(true);
+    setInviteError(null);
     try {
       await api.inviteTeamMember(inviteEmail.trim(), inviteRole);
       setInviteEmail("");
-      // Refresh team data
       const result = await api.getTeam();
       setTeam(result);
-    } catch {
-      // Silently fail for demo
+    } catch (err: unknown) {
+      const detail = (err as { detail?: string })?.detail;
+      setInviteError(detail || "Failed to invite member. Please try again.");
     } finally {
       setIsInviting(false);
     }
   };
 
-  const handleRemove = async (userId: string) => {
+  const handleRemove = async (memberId: string) => {
+    setRemoveError(null);
     try {
-      await api.removeTeamMember(userId);
-      setTeam((prev) => ({
-        ...prev,
-        members: prev.members.filter((m) => m.id !== userId),
-      }));
-    } catch {
-      // Silently fail
+      await api.removeTeamMember(memberId);
+      setTeam((prev) =>
+        prev ? { ...prev, members: prev.members.filter((m) => m.id !== memberId) } : prev
+      );
+    } catch (err: unknown) {
+      const detail = (err as { detail?: string })?.detail;
+      setRemoveError(detail || "Failed to remove member.");
     }
   };
 
@@ -88,9 +73,18 @@ export default function TeamsPage() {
         </p>
       </div>
 
+      {removeError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {removeError}
+        </div>
+      )}
+
       {/* Invite member */}
       <div className="card">
         <h2 className="text-lg font-semibold text-slate-900">Invite Member</h2>
+        {inviteError && (
+          <p className="mt-2 text-sm text-red-600">{inviteError}</p>
+        )}
         <div className="mt-4 flex gap-3">
           <input
             type="email"
@@ -120,10 +114,23 @@ export default function TeamsPage() {
       {/* Members list */}
       <div className="card">
         <h2 className="mb-4 text-lg font-semibold text-slate-900">
-          Members ({team.members.length})
+          Members ({team?.members.length ?? 0})
         </h2>
+        {isLoading && (
+          <div className="animate-pulse space-y-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 py-4">
+                <div className="h-10 w-10 rounded-full bg-slate-200" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-32 rounded bg-slate-200" />
+                  <div className="h-3 w-24 rounded bg-slate-200" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="divide-y divide-slate-100">
-          {team.members.map((member) => (
+          {(team?.members ?? []).map((member) => (
             <div
               key={member.id}
               className="flex items-center justify-between py-4 first:pt-0 last:pb-0"

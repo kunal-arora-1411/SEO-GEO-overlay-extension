@@ -1,3 +1,5 @@
+
+
 # Python
 __pycache__/
 *.py[cod]
@@ -8,10 +10,13 @@ dist/
 build/
 venv/
 .venv/
-.env
+#.env
 
 # Node
 node_modules/
+
+# Next.js build output
+web/.next/
 
 # IDE
 .vscode/

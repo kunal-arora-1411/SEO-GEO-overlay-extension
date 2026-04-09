@@ -51,8 +51,10 @@ class IntentClassifier:
         try:
             data = json.loads(raw)
             intent = data.get("intent", "informational")
-            if intent not in _VALID_INTENTS:
-                logger.warning("LLM returned unknown intent '%s', defaulting", intent)
+            confidence = data.get("confidence", 1.0)
+            if intent not in _VALID_INTENTS or confidence < 0.5:
+                if intent not in _VALID_INTENTS:
+                    logger.warning("LLM returned unknown intent '%s', defaulting", intent)
                 return "informational"
             return intent
         except (json.JSONDecodeError, TypeError, AttributeError):
@@ -63,7 +65,7 @@ class IntentClassifier:
     def _build_prompt(request: AnalyzeRequest) -> str:
         title = request.meta.title or "(none)"
         h1_text = request.headings.h1[0].text if request.headings.h1 else "(none)"
-        first_500 = (request.content.full_text or "")[:500]
+        first_500 = (request.content.full_text or "")[:300]
         word_count = request.content.word_count
 
         # Simple CTA detection heuristic
@@ -77,5 +79,5 @@ class IntentClassifier:
             f"H1: {h1_text}\n"
             f"Word count: {word_count}\n"
             f"Has CTA: {'yes' if has_cta else 'no'}\n\n"
-            f"First 500 characters of content:\n{first_500}\n"
+            f"First 300 characters of content:\n{first_500}\n"
         )

@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.dependencies import get_current_user
 from auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 from auth.security import create_access_token, hash_password, verify_password
+from db.models.daily_usage import DailyUsage
 from db.models.user import User
 from db.session import get_db
+from middleware.usage_gate import TIER_LIMITS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,7 +32,7 @@ async def register(
     user = User(
         email=request.email,
         hashed_password=hash_password(request.password),
-        display_name=request.display_name,
+        display_name=request.full_name,
         tier="free",
         is_active=True,
     )
@@ -67,6 +71,26 @@ async def login(
 @router.get("/me", response_model=UserResponse)
 async def get_me(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """Return the currently authenticated user's profile."""
-    return UserResponse.model_validate(user)
+    today = date.today()
+    result = await db.execute(
+        select(DailyUsage).where(
+            DailyUsage.user_id == user.id,
+            DailyUsage.date == today,
+        )
+    )
+    usage = result.scalar_one_or_none()
+    scans_today = usage.scan_count if usage is not None else 0
+    limit = TIER_LIMITS.get(user.tier, TIER_LIMITS["free"])
+    analyses_remaining = -1 if limit == -1 else max(0, limit - scans_today)
+
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.display_name,
+        tier=user.tier,
+        analyses_remaining=analyses_remaining,
+        created_at=user.created_at,
+    )

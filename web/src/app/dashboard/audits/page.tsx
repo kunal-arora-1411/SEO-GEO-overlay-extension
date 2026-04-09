@@ -1,37 +1,7 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type Audit } from "@/lib/api";
-
-const demoAudits: Audit[] = [
-  {
-    id: "1",
-    domain: "example.com",
-    status: "completed",
-    pages_crawled: 142,
-    issues_found: 23,
-    score: 78,
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-  },
-  {
-    id: "2",
-    domain: "mysite.io",
-    status: "completed",
-    pages_crawled: 67,
-    issues_found: 8,
-    score: 91,
-    created_at: new Date(Date.now() - 604800000).toISOString(),
-  },
-  {
-    id: "3",
-    domain: "blog.example.com",
-    status: "running",
-    pages_crawled: 34,
-    issues_found: 5,
-    score: 0,
-    created_at: new Date().toISOString(),
-  },
-];
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -71,28 +41,65 @@ function getScoreColor(score: number): string {
 }
 
 export default function AuditsPage() {
-  const [audits, setAudits] = useState<Audit[]>(demoAudits);
+  const [audits, setAudits] = useState<Audit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newDomain, setNewDomain] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
+  // Track polling intervals for running audits
+  const pollingRefs = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+  const stopPolling = (auditId: string) => {
+    const interval = pollingRefs.current.get(auditId);
+    if (interval) {
+      clearInterval(interval);
+      pollingRefs.current.delete(auditId);
+    }
+  };
+
+  const startPolling = (auditId: string) => {
+    if (pollingRefs.current.has(auditId)) return;
+    const interval = setInterval(async () => {
+      try {
+        const updated = await api.getAuditById(auditId);
+        setAudits((prev) =>
+          prev.map((a) => (a.id === auditId ? updated : a))
+        );
+        if (updated.status !== "running" && updated.status !== "pending") {
+          stopPolling(auditId);
+        }
+      } catch {
+        stopPolling(auditId);
+      }
+    }, 5000);
+    pollingRefs.current.set(auditId, interval);
+  };
+
   useEffect(() => {
     async function fetchAudits() {
       try {
         const result = await api.getAudits();
-        if (result.items.length > 0) {
-          setAudits(result.items);
-        }
+        setAudits(result.items);
+        // Start polling for any running/pending audits
+        result.items.forEach((a) => {
+          if (a.status === "running" || a.status === "pending") {
+            startPolling(a.id);
+          }
+        });
       } catch {
-        // Use demo data
+        // leave as empty array
       } finally {
         setIsLoading(false);
       }
     }
     fetchAudits();
-  }, []);
+    // Cleanup all polling on unmount
+    return () => {
+      pollingRefs.current.forEach((interval) => clearInterval(interval));
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartAudit = async (e: FormEvent) => {
     e.preventDefault();
@@ -104,6 +111,7 @@ export default function AuditsPage() {
       setAudits((prev) => [audit, ...prev]);
       setNewDomain("");
       setShowNewForm(false);
+      startPolling(audit.id);
     } catch (err: unknown) {
       const apiError = err as { detail?: string };
       setFormError(

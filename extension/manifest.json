@@ -28,6 +28,8 @@
         "content/site-adapters.js",
         "content/smart-extractor.js",
         "content/scorer-client.js",
+        "content/geo-scorer-client.js",
+        "content/suggestion-templates.js",
         "content/diff-engine.js",
         "content/inline-analyzer.js",
         "content/overlay-manager.js",

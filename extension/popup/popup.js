@@ -316,6 +316,14 @@
         displayResults(message.data);
       }
     });
+
+    // Listen for LLM enrichment arriving after the initial results are shown
+    chrome.runtime.onMessage.addListener(function enrichmentListener(message) {
+      if (message.type === "ENRICHMENT_READY") {
+        chrome.runtime.onMessage.removeListener(enrichmentListener);
+        appendEnrichmentSuggestions(message.data);
+      }
+    });
   }
 
   function setLoadingText(text) {
@@ -327,90 +335,40 @@
   function displayResults(data) {
     showState("results");
 
-    // SEO score
+    // SEO score — always available instantly
     const seoScore = data.seo_score ?? 0;
     updateScoreGauge("seo", seoScore);
 
-    // GEO score — might not be available yet
+    // GEO score — now always available instantly (client-side scoring)
     const geoScore = data.geo_score ?? null;
     if (geoScore !== null && geoScore !== undefined) {
       updateScoreGauge("geo", geoScore);
-      setGeoStatus("done", "GEO analysis complete");
     } else {
       resetGauge("geo");
-      setGeoStatus("pending", "GEO analysis pending...");
-
-      // If there is page data, request backend GEO analysis
-      if (data.page_data) {
-        setLoadingText("Running GEO analysis...");
-        requestGeoAnalysis(data.page_data, seoScore);
-      }
     }
+
+    // Hide GEO status bar — no longer needed (GEO is instant)
+    els.geoStatus.classList.add("hidden");
 
     // Combined score
     const combinedData = data.combined_score || null;
     if (combinedData) {
       updateCombinedScore(combinedData.score, combinedData.grade);
     } else if (geoScore !== null) {
-      // Calculate combined from available scores
-      const seoWeight = 0.4;
-      const geoWeight = 0.6;
-      const combined = Math.round(seoScore * seoWeight + geoScore * geoWeight);
+      const combined = Math.round(seoScore * 0.4 + geoScore * 0.6);
       const grade = getGrade(combined);
       updateCombinedScore(combined, grade);
     } else {
-      // Only SEO available — show partial
-      updateCombinedScore(null, "-");
+      updateCombinedScore(seoScore, getGrade(seoScore));
     }
 
-    // Issues
+    // Issues — SEO + GEO merged, all available instantly
     const issues = data.issues || [];
     renderIssues(issues);
 
-    // Suggestions
-    const suggestions = data.suggestions || data.geo_suggestions || [];
+    // Optimization Suggestions — GEO issues passed directly as suggestions
+    const suggestions = data.suggestions || [];
     renderSuggestions(suggestions);
-  }
-
-  // ─── GEO ANALYSIS REQUEST ───────────────────────────────
-
-  function requestGeoAnalysis(pageData, seoScore) {
-    chrome.runtime.sendMessage(
-      { type: "ANALYZE_PAGE", data: pageData },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          setGeoStatus("error", "GEO analysis unavailable");
-          return;
-        }
-
-        if (response && response.error) {
-          setGeoStatus("error", "GEO: " + response.error);
-          return;
-        }
-
-        if (response) {
-          const geoScore = response.geo_score ?? 0;
-          updateScoreGauge("geo", geoScore);
-          setGeoStatus("done", "GEO analysis complete");
-
-          // Recalculate combined
-          const combined = Math.round(seoScore * 0.4 + geoScore * 0.6);
-          const grade = getGrade(combined);
-          updateCombinedScore(combined, grade);
-
-          // Render GEO suggestions if available
-          if (response.suggestions && response.suggestions.length > 0) {
-            renderSuggestions(response.suggestions);
-          }
-
-          // Render GEO issues if available
-          if (response.geo_issues && response.geo_issues.length > 0) {
-            const existingIssues = getCurrentIssues();
-            renderIssues([...existingIssues, ...response.geo_issues]);
-          }
-        }
-      }
-    );
   }
 
   // ─── SCORE GAUGES ────────────────────────────────────────
@@ -593,6 +551,118 @@
     return issues;
   }
 
+  // ─── LLM ENRICHMENT SUGGESTIONS ─────────────────────────
+
+  /**
+   * Appends LLM-generated suggestions to the already-rendered suggestions list.
+   * Called when ENRICHMENT_READY fires after backend responds.
+   */
+  function appendEnrichmentSuggestions(enrichment) {
+    if (!enrichment) return;
+
+    const fragment = document.createDocumentFragment();
+    let added = 0;
+
+    // FAQ suggestions
+    if (enrichment.faq_suggestions && enrichment.faq_suggestions.length > 0) {
+      const card = buildEnrichCard(
+        "AI Suggestion · FAQ",
+        "Add these FAQ pairs to improve AI answer eligibility:",
+        enrichment.faq_suggestions.map(function (f) {
+          return "Q: " + f.q + "\nA: " + f.a;
+        }).join("\n\n")
+      );
+      fragment.appendChild(card);
+      added++;
+    }
+
+    // Meta description suggestion
+    if (enrichment.meta_description_suggestion) {
+      const card = buildEnrichCard(
+        "AI Suggestion · Meta Description",
+        "Suggested meta description:",
+        enrichment.meta_description_suggestion
+      );
+      fragment.appendChild(card);
+      added++;
+    }
+
+    // Heading optimizations
+    if (enrichment.heading_suggestions && enrichment.heading_suggestions.h1_suggestion) {
+      const hs = enrichment.heading_suggestions;
+      const detail = "H1: " + hs.h1_suggestion +
+        (hs.h2_suggestions && hs.h2_suggestions.length > 0
+          ? "\n\nH2s:\n• " + hs.h2_suggestions.join("\n• ")
+          : "") +
+        (hs.reason ? "\n\nReason: " + hs.reason : "");
+      const card = buildEnrichCard("AI Suggestion · Headings", "Suggested heading improvements:", detail);
+      fragment.appendChild(card);
+      added++;
+    }
+
+    // Answerability score
+    if (enrichment.answerability_score != null) {
+      const gaps = enrichment.answerability_gaps && enrichment.answerability_gaps.length > 0
+        ? "\n\nTop gaps:\n• " + enrichment.answerability_gaps.join("\n• ")
+        : "";
+      const card = buildEnrichCard(
+        "AI Suggestion · Answerability",
+        "AI engine answerability score: " + enrichment.answerability_score + "/100",
+        gaps ? gaps.trim() : "No major gaps detected."
+      );
+      fragment.appendChild(card);
+      added++;
+    }
+
+    // Summary points
+    if (enrichment.summary_points && enrichment.summary_points.length > 0) {
+      const card = buildEnrichCard(
+        "AI Suggestion · TL;DR Summary",
+        "Add this scannable summary for AI extraction:",
+        "• " + enrichment.summary_points.join("\n• ")
+      );
+      fragment.appendChild(card);
+      added++;
+    }
+
+    if (added > 0) {
+      // Remove "no items" placeholder if present
+      const placeholder = els.suggestionsList.querySelector(".no-items");
+      if (placeholder) els.suggestionsList.removeChild(placeholder);
+
+      els.suggestionsList.appendChild(fragment);
+      // Update count
+      const current = parseInt(els.suggestionCount.textContent, 10) || 0;
+      els.suggestionCount.textContent = current + added;
+    }
+  }
+
+  function buildEnrichCard(typeLabel, message, detail) {
+    const card = document.createElement("div");
+    card.className = "suggestion-card suggestion-card--enriched";
+
+    const typEl = document.createElement("div");
+    typEl.className = "suggestion-type";
+    typEl.textContent = typeLabel;
+
+    const msgEl = document.createElement("div");
+    msgEl.className = "suggestion-text";
+    msgEl.textContent = message;
+
+    const detailEl = document.createElement("div");
+    detailEl.className = "suggestion-detail";
+    detailEl.style.whiteSpace = "pre-wrap";
+    detailEl.style.marginTop = "6px";
+    detailEl.style.fontSize = "11px";
+    detailEl.style.color = "#94a3b8";
+    detailEl.textContent = detail;
+
+    card.appendChild(typEl);
+    card.appendChild(msgEl);
+    card.appendChild(detailEl);
+    return card;
+  }
+
   // ─── SUGGESTIONS ─────────────────────────────────────────
 
   function renderSuggestions(suggestions) {
@@ -601,7 +671,7 @@
 
     if (suggestions.length === 0) {
       els.suggestionsList.innerHTML =
-        '<div class="no-items">No suggestions at this time.</div>';
+        '<div class="no-items">No optimization tips at this time.</div>';
       return;
     }
 
@@ -613,14 +683,33 @@
 
       const typeLabel = document.createElement("div");
       typeLabel.className = "suggestion-type";
-      typeLabel.textContent = sug.category || sug.type || "Suggestion";
+      // Show fix_type or element as category label
+      typeLabel.textContent = sug.fix_type || sug.category || sug.type || "Optimization";
 
       const text = document.createElement("div");
       text.className = "suggestion-text";
-      text.textContent = sug.text || sug.message || sug.suggestion || "";
+      // New format: message field; old format: text/suggestion fields
+      text.textContent = sug.message || sug.text || sug.suggestion || "";
 
       card.appendChild(typeLabel);
       card.appendChild(text);
+
+      // Show quote if available (real page text)
+      if (sug.quote) {
+        const quote = document.createElement("div");
+        quote.className = "suggestion-quote";
+        quote.textContent = "\u201C" + sug.quote.substring(0, 100) + "\u201D";
+        card.appendChild(quote);
+      }
+
+      // Show research citation if available
+      if (sug.research_cite) {
+        const cite = document.createElement("div");
+        cite.className = "suggestion-cite";
+        cite.textContent = "Source: " + sug.research_cite;
+        card.appendChild(cite);
+      }
+
       fragment.appendChild(card);
     });
 
